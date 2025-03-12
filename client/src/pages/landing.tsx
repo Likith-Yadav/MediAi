@@ -1,61 +1,72 @@
-import React from 'react';
-import { useAuth } from '../hooks/useAuth';
+
+import React, { useState } from 'react';
 import { useLocation } from 'wouter';
+import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/button';
 import { AuthForms } from '../components/AuthForms';
 
 export function Landing() {
-  const { user, isLoading } = useAuth();
-  const [_, navigate] = useLocation();
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
+  const [isLoaded, setIsLoaded] = useState(true);
 
-  // Redirect to dashboard if user is logged in
+  // Redirect to dashboard if user is already logged in
   React.useEffect(() => {
-    if (user && !isLoading) {
+    if (user) {
       navigate('/dashboard');
     }
-  }, [user, isLoading, navigate]);
+  }, [user, navigate]);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="px-4 lg:px-6 h-14 flex items-center">
-        <div className="flex w-full justify-between">
-          <h1 className="text-2xl font-bold">MedAssist AI</h1>
-          {!isLoading && !user && (
-            <Button variant="ghost" onClick={() => navigate('/dashboard')}>
-              Sign In
-            </Button>
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="py-6 px-8 flex justify-between items-center border-b">
+        <h1 className="text-2xl font-bold">MediAssist AI</h1>
+        <div className="flex gap-4">
+          {isLoaded && !user && (
+            <>
+              <Button variant="outline" onClick={() => navigate('/login')}>Sign In</Button>
+              <Button onClick={() => navigate('/register')}>Sign Up</Button>
+            </>
           )}
         </div>
       </header>
-      <main className="flex-1">
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48">
-          <div className="container px-4 md:px-6">
-            <div className="grid gap-6 lg:grid-cols-2 lg:gap-12 xl:grid-cols-2">
-              <div className="flex flex-col justify-center space-y-4">
-                <div className="space-y-2">
-                  <h1 className="text-3xl font-bold tracking-tighter sm:text-5xl xl:text-6xl/none">
-                    Your AI Healthcare Assistant
-                  </h1>
-                  <p className="max-w-[600px] text-gray-500 md:text-xl dark:text-gray-400">
-                    Receive preliminary health assessments, analyze medical images, and get personalized health
-                    insights with our advanced AI system.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 min-[400px]:flex-row">
-                  <Button size="lg" onClick={() => navigate('/dashboard')}>
-                    Get Started
-                  </Button>
-                  <Button size="lg" variant="outline">
-                    Learn More
-                  </Button>
-                </div>
-              </div>
-              <div className="mx-auto flex flex-col justify-center">
-                <AuthForms />
-              </div>
-            </div>
+
+      <main className="flex-1 flex flex-col md:flex-row">
+        <div className="md:w-1/2 flex flex-col justify-center px-8 py-12">
+          <h2 className="text-4xl font-bold tracking-tight mb-4">AI-Powered Medical Assistant</h2>
+          <p className="text-xl text-muted-foreground mb-8">
+            Get preliminary medical insights, analyze symptoms, and understand health conditions with advanced AI technology.
+          </p>
+          <div className="flex gap-4">
+            <Button size="lg" onClick={() => navigate('/register')}>Get Started</Button>
+            <Button size="lg" variant="outline" onClick={() => navigate('/about')}>Learn More</Button>
           </div>
-        </section>
+        </div>
+        <div className="md:w-1/2 bg-muted p-8 flex items-center justify-center">
+          <div className="max-w-md w-full p-6 bg-background rounded-lg shadow-lg">
+            <h3 className="text-2xl font-semibold mb-6">Experience MediAssist AI</h3>
+            <p className="text-muted-foreground mb-6">
+              Sign up now to access our AI-powered tools:
+            </p>
+            <ul className="space-y-2 mb-6">
+              <li className="flex items-center">
+                <span className="mr-2">✓</span>
+                <span>Symptom analysis and preliminary insights</span>
+              </li>
+              <li className="flex items-center">
+                <span className="mr-2">✓</span>
+                <span>Medical image analysis capabilities</span>
+              </li>
+              <li className="flex items-center">
+                <span className="mr-2">✓</span>
+                <span>Speech-to-text for hands-free symptom reporting</span>
+              </li>
+            </ul>
+            <Button className="w-full" onClick={() => navigate('/register')}>
+              Create Free Account
+            </Button>
+          </div>
+        </div>
       </main>
     </div>
   );
