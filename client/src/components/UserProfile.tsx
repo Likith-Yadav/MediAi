@@ -64,7 +64,7 @@ export default function UserProfile({ user }: UserProps) {
           photoURL = await getDownloadURL(snapshot.ref);
         } catch (uploadError: any) {
           console.error("Image upload error:", uploadError);
-          
+
           // Show specific error toast for CORS issues
           if (uploadError.message?.includes("CORS") || 
               uploadError.code === "storage/unauthorized" || 
@@ -81,7 +81,6 @@ export default function UserProfile({ user }: UserProps) {
               description: "Could not upload profile image. Continuing with other profile updates."
             });
           }
-          
           // Continue with the rest of the profile update, without the new image
         }
       }
@@ -102,17 +101,17 @@ export default function UserProfile({ user }: UserProps) {
       setIsEditing(false);
     } catch (error: any) {
       console.error("Profile update error:", error);
-      
+
       let errorTitle = "Update failed";
       let errorMessage = "Failed to update profile. Please try again.";
-      
+
       if (error.code === "permission-denied" || error.code === "storage/unauthorized") {
         errorTitle = "Firebase permissions error";
         errorMessage = "You don't have permission to update this profile. Check your Firebase rules configuration.";
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       toast({
         variant: "destructive",
         title: errorTitle,
@@ -143,9 +142,9 @@ export default function UserProfile({ user }: UserProps) {
               <p className="text-slate-500 text-sm">{user.email}</p>
             </div>
           </div>
-          
+
           <Separator className="my-4" />
-          
+
           <div>
             <h3 className="text-sm font-medium text-slate-500 mb-2">Medical Information</h3>
             <div className="space-y-2">
@@ -163,7 +162,7 @@ export default function UserProfile({ user }: UserProps) {
               </div>
             </div>
           </div>
-          
+
           <Button 
             className="w-full mt-4" 
             variant="outline" 
@@ -193,7 +192,7 @@ export default function UserProfile({ user }: UserProps) {
                 </AvatarFallback>
               )}
             </Avatar>
-            
+
             <Label htmlFor="photo" className="cursor-pointer text-primary text-sm font-medium">
               Change Profile Photo
               <Input 
@@ -205,7 +204,7 @@ export default function UserProfile({ user }: UserProps) {
               />
             </Label>
           </div>
-          
+
           <div className="space-y-3">
             <div>
               <Label htmlFor="name">Full Name</Label>
@@ -217,7 +216,7 @@ export default function UserProfile({ user }: UserProps) {
                 placeholder="Your name"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="age">Age</Label>
               <Input 
@@ -229,7 +228,7 @@ export default function UserProfile({ user }: UserProps) {
                 placeholder="Your age"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="bloodType">Blood Type</Label>
               <Select 
@@ -246,7 +245,7 @@ export default function UserProfile({ user }: UserProps) {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div>
               <Label htmlFor="allergies">Allergies</Label>
               <Textarea 
@@ -259,7 +258,7 @@ export default function UserProfile({ user }: UserProps) {
               />
             </div>
           </div>
-          
+
           <div className="flex space-x-2 pt-2">
             <Button 
               type="button" 
