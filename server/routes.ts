@@ -1,10 +1,12 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
 import path from "path";
 import { z } from "zod";
 import { insertMessageSchema } from "@shared/schema";
+import fs from "fs";
+import { nanoid } from "nanoid";
 
 // Configure multer for file storage
 const memStorage = multer.memoryStorage();
@@ -255,6 +257,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(200).json(analysisResult);
     } catch (error) {
       console.error("Error in image analysis:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Profile image upload endpoint (local storage version to bypass CORS)
+  const profileUpload = multer({
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => {
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'profile-images');
+        // Create directory if it doesn't exist
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+      },
+      filename: (req, file, cb) => {
+        // Generate unique filename
+        const uniqueId = nanoid();
+        const extension = path.extname(file.originalname);
+        cb(null, `${uniqueId}${extension}`);
+      }
+    }),
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB limit for profile images
+    },
+    fileFilter: (req, file, cb) => {
+      // Accept only image files
+      const allowedMimeTypes = ["image/jpeg", "image/png", "image/gif"];
+      if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`Unsupported file type: ${file.mimetype}`));
+      }
+    }
+  });
+
+  // Profile image upload endpoint
+  app.post(apiRouter("/profile/upload"), profileUpload.single("image"), async (req: Request, res: Response) => {
+    try {
+      // Check if file was uploaded
+      if (!req.file) {
+        return res.status(400).json({ message: "No image file provided" });
+      }
+      
+      // Get the user ID from the request
+      const userId = req.body.userId;
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      // Construct the URL to the uploaded file
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const relativePath = path.join('/uploads/profile-images', req.file.filename).replace(/\\/g, '/');
+      const fileUrl = `${baseUrl}${relativePath}`;
+      
+      // Return the URL to the client
+      return res.status(200).json({ 
+        url: fileUrl,
+        fileName: req.file.filename
+      });
+    } catch (error) {
+      console.error("Error uploading profile image:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

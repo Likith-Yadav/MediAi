@@ -1,6 +1,6 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { initializeApp, FirebaseApp } from 'firebase/app';
+import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -9,7 +9,8 @@ import {
   signInWithPopup,
   signOut,
   onAuthStateChanged,
-  User as FirebaseAuthUser
+  User as FirebaseAuthUser,
+  Auth
 } from 'firebase/auth';
 
 const firebaseConfig = {
