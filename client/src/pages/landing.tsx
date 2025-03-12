@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '../hooks/useAuth';
@@ -71,3 +70,5 @@ export function Landing() {
     </div>
   );
 }
+
+export default Landing;

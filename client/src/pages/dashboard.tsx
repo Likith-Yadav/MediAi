@@ -12,7 +12,7 @@ import { Label } from '../components/ui/label';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { Loader2, Mic, Upload, SendIcon } from 'lucide-react';
 
-export function Dashboard() {
+function Dashboard() {
   const { user, signOut } = useAuth();
   const [, navigate] = useLocation();
   
@@ -276,3 +276,5 @@ export function Dashboard() {
     </div>
   );
 }
+
+export default Dashboard;
