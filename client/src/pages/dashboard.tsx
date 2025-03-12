@@ -5,9 +5,39 @@ import RecentConsultations from "@/components/RecentConsultations";
 import ChatInterface from "@/components/ChatInterface";
 import Footer from "@/components/Footer";
 import { Message } from "@/lib/aiService";
+import { User, Consultation } from "@/lib/types";
 import { nanoid } from "nanoid";
+import { useLocation } from "wouter";
+import { useUserProfile, useConsultations } from "@/hooks/useFirebase";
+
+// Dynamically check if Clerk is available
+const hasClerkAuth = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+// Only import Clerk components if we have the key
+let useUser: any = () => ({ user: null, isLoaded: true, isSignedIn: true });
+
+if (hasClerkAuth) {
+  // This code will only run if VITE_CLERK_PUBLISHABLE_KEY exists
+  const ClerkImports = require("@clerk/clerk-react");
+  useUser = ClerkImports.useUser;
+}
 
 export default function Dashboard() {
+  // Conditionally use Clerk auth if available
+  const hasClerkAuth = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const clerkAuth = hasClerkAuth ? useUser() : { user: null, isLoaded: true, isSignedIn: true };
+  const { user, isLoaded, isSignedIn } = clerkAuth;
+  const [, setLocation] = useLocation();
+
+  // Only redirect if Clerk auth is enabled and user is not signed in
+  if (hasClerkAuth && isLoaded && !isSignedIn) {
+    setLocation("/");
+    return null;
+  }
+  
+  // Generate a demo user ID if not authenticated via Clerk
+  const userId = user?.id || "demo-user-123";
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: nanoid(),
@@ -38,21 +68,22 @@ export default function Dashboard() {
     ]);
   };
 
-  // Mock user profile data (in a real app, this would come from authentication)
-  const userProfile = {
-    name: "John Davis",
-    email: "john.davis@example.com",
-    age: 34,
-    bloodType: "O+",
-    allergies: "Penicillin"
-  };
+  // Query user profile and consultations from Firebase
+  const { data: firebaseProfile, isLoading: isLoadingProfile } = useUserProfile(user?.id);
+  const { data: consultations = [], isLoading: isLoadingConsultations } = useConsultations(user?.id);
 
-  // Mock consultation history (in a real app, this would be fetched from API)
-  const consultations = [
-    { id: '1', title: "Respiratory Issue", date: "May 15, 2023", status: "Completed" },
-    { id: '2', title: "Skin Rash Analysis", date: "April 28, 2023", status: "Completed" },
-    { id: '3', title: "Headache Assessment", date: "March 12, 2023", status: "Completed" }
-  ];
+  // Map Firebase user to UI user
+  const userProfile = firebaseProfile ? {
+    name: firebaseProfile.name,
+    email: firebaseProfile.email,
+    age: firebaseProfile.age || 0,
+    bloodType: firebaseProfile.bloodType || "Unknown",
+    allergies: firebaseProfile.allergies || "None"
+  } : null;
+
+  if (!isLoaded || isLoadingProfile || isLoadingConsultations || !userProfile || !consultations) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="bg-slate-100 min-h-screen flex flex-col text-slate-800">
