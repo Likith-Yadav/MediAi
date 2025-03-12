@@ -57,9 +57,33 @@ export default function UserProfile({ user }: UserProps) {
 
       // Upload image if a new one is selected
       if (profileImage) {
-        const storageRef = ref(storage, `profile-images/${user.uid}/${profileImage.name}`);
-        const snapshot = await uploadBytes(storageRef, profileImage);
-        photoURL = await getDownloadURL(snapshot.ref);
+        try {
+          // First, try the upload
+          const storageRef = ref(storage, `profile-images/${user.uid}/${profileImage.name}`);
+          const snapshot = await uploadBytes(storageRef, profileImage);
+          photoURL = await getDownloadURL(snapshot.ref);
+        } catch (uploadError: any) {
+          console.error("Image upload error:", uploadError);
+          
+          // Show specific error toast for CORS issues
+          if (uploadError.message?.includes("CORS") || 
+              uploadError.code === "storage/unauthorized" || 
+              uploadError.code === "cors-error") {
+            toast({
+              variant: "destructive",
+              title: "Image upload failed",
+              description: "Your Firebase Storage CORS settings need to be configured to allow uploads from this domain. Continuing without image update.",
+            });
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Image upload failed",
+              description: "Could not upload profile image. Continuing with other profile updates."
+            });
+          }
+          
+          // Continue with the rest of the profile update, without the new image
+        }
       }
 
       // Update profile data
@@ -77,10 +101,22 @@ export default function UserProfile({ user }: UserProps) {
       });
       setIsEditing(false);
     } catch (error: any) {
+      console.error("Profile update error:", error);
+      
+      let errorTitle = "Update failed";
+      let errorMessage = "Failed to update profile. Please try again.";
+      
+      if (error.code === "permission-denied" || error.code === "storage/unauthorized") {
+        errorTitle = "Firebase permissions error";
+        errorMessage = "You don't have permission to update this profile. Check your Firebase rules configuration.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         variant: "destructive",
-        title: "Update failed",
-        description: error.message || "Failed to update profile. Please try again."
+        title: errorTitle,
+        description: errorMessage
       });
     } finally {
       setIsLoading(false);

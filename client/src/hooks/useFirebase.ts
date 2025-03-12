@@ -20,27 +20,40 @@ export function useUserProfile(userId: string | undefined) {
   return useQuery({
     queryKey: ['users', userId],
     queryFn: async () => {
-      if (!userId) return null;
+      if (!userId || !db) {
+        console.log("User profile query skipped: ", { 
+          userId: userId ? "present" : "missing", 
+          db: db ? "initialized" : "not initialized" 
+        });
+        return null;
+      }
       
-      const docRef = doc(db, 'users', userId);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        const userData = docSnap.data();
-        return { 
-          uid: docSnap.id, 
-          name: userData.name || '',
-          email: userData.email || '',
-          createdAt: userData.createdAt ? (userData.createdAt as Timestamp).toDate() : new Date(),
-          age: userData.age,
-          bloodType: userData.bloodType,
-          allergies: userData.allergies
-        } as FirebaseUser;
+      try {
+        const docRef = doc(db, 'users', userId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const userData = docSnap.data();
+          return { 
+            uid: docSnap.id, 
+            name: userData.name || '',
+            email: userData.email || '',
+            photoURL: userData.photoURL || '',
+            createdAt: userData.createdAt ? (userData.createdAt as Timestamp).toDate() : new Date(),
+            age: userData.age,
+            bloodType: userData.bloodType,
+            allergies: userData.allergies
+          } as FirebaseUser;
+        } else {
+          console.log(`No user document found for userId: ${userId}`);
+        }
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
       }
       
       return null;
     },
-    enabled: !!userId,
+    enabled: !!userId && !!db,
   });
 }
 
