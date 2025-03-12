@@ -5,31 +5,17 @@ import RecentConsultations from "@/components/RecentConsultations";
 import ChatInterface from "@/components/ChatInterface";
 import Footer from "@/components/Footer";
 import { Message } from "@/lib/aiService";
-import { User, Consultation } from "@/lib/types";
+import { Consultation } from "@/lib/types";
 import { nanoid } from "nanoid";
 import { useLocation } from "wouter";
-import { useUserProfile, useConsultations } from "@/hooks/useFirebase";
+import { useConsultations } from "@/hooks/useFirebase";
 import { useAuth } from "@/hooks/useAuth";
+import { FirebaseUser } from "@/lib/firebase";
 
 export default function Dashboard() {
   const { currentUser, userProfile: firebaseUserProfile, isLoading } = useAuth();
   const [, setLocation] = useLocation();
-
-  // Redirect to landing page if not logged in
-  useEffect(() => {
-    if (!isLoading && !currentUser) {
-      setLocation("/");
-    }
-  }, [isLoading, currentUser, setLocation]);
-
-  // Return null during loading or if no user is found
-  if (isLoading || !currentUser) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
-  }
   
-  // Use the Firebase user ID
-  const userId = currentUser?.uid;
-
   const [messages, setMessages] = useState<Message[]>([
     {
       id: nanoid(),
@@ -38,6 +24,13 @@ export default function Dashboard() {
       timestamp: new Date()
     }
   ]);
+
+  // Redirect to landing page if not logged in
+  useEffect(() => {
+    if (!isLoading && !currentUser) {
+      setLocation("/");
+    }
+  }, [isLoading, currentUser, setLocation]);
 
   const addMessage = (message: Message) => {
     setMessages(prev => [...prev, message]);
@@ -59,18 +52,17 @@ export default function Dashboard() {
       }
     ]);
   };
+  
+  // Return null during loading or if no user is found
+  if (isLoading || !currentUser) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
+  
+  // Use the Firebase user ID
+  const userId = currentUser?.uid;
 
-  // Query consultations from Firebase (temporarily using mock data until Firebase collection is ready)
+  // Query consultations from Firebase
   const { data: consultations = [], isLoading: isLoadingConsultations } = useConsultations(userId);
-
-  // Map Firebase user to UI format
-  const uiProfile = {
-    name: firebaseUserProfile?.name || "User",
-    email: firebaseUserProfile?.email || "",
-    age: firebaseUserProfile?.age || 0,
-    bloodType: firebaseUserProfile?.bloodType || "Unknown",
-    allergies: firebaseUserProfile?.allergies || "None"
-  } as User;
 
   if (isLoadingConsultations) {
     return <div className="flex items-center justify-center min-h-screen">Loading data...</div>;
@@ -84,14 +76,20 @@ export default function Dashboard() {
     date: c.date instanceof Date ? c.date.toISOString().split('T')[0] : String(c.date)
   }));
 
+  // Create a simplified user object for Header
+  const headerUser = {
+    name: firebaseUserProfile?.name || "User",
+    email: firebaseUserProfile?.email || ""
+  };
+  
   return (
     <div className="bg-slate-100 min-h-screen flex flex-col text-slate-800">
-      <Header user={uiProfile} />
+      <Header user={headerUser} />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 space-y-6">
-            <UserProfile user={uiProfile} />
+            <UserProfile user={firebaseUserProfile || {}} />
             <RecentConsultations consultations={formattedConsultations} />
           </div>
           

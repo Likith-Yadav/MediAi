@@ -44,6 +44,7 @@ export interface FirebaseUser {
   uid: string;
   name: string;
   email: string;
+  photoURL?: string;
   age?: number;
   bloodType?: string;
   allergies?: string;
