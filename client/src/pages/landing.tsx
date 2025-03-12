@@ -114,7 +114,7 @@ export default function Landing() {
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : !isLoading ? (
                 <Tabs value={authMode} onValueChange={setAuthMode}>
                   <TabsList className="grid w-full grid-cols-2 mb-4">
                     <TabsTrigger value="login">Login</TabsTrigger>
@@ -127,6 +127,10 @@ export default function Landing() {
                     <SignUpForm onSuccess={handleLoginSuccess} />
                   </TabsContent>
                 </Tabs>
+              ) : (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
               )}
             </div>
           </div>
