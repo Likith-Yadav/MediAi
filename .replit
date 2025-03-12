@@ -10,7 +10,7 @@ deploymentTarget = "cloudrun"
 run = ["sh", "-c", "npm run dev"]
 
 [workflows]
-runButton = "Start application"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Project"
@@ -37,5 +37,5 @@ args = "npm run dev"
 waitForPort = 5000
 
 [[ports]]
-localPort = 3000
-externalPort = 3000
+localPort = 5000
+externalPort = 80
