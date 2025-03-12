@@ -1,22 +1,19 @@
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-
-// Dynamically check if Clerk is available
-const hasClerkAuth = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-// Only import Clerk components if we have the key
-let SignIn: any = () => null;
-let useUser: any = () => ({ isSignedIn: false, isLoaded: true });
-
-if (hasClerkAuth) {
-  // This code will only run if VITE_CLERK_PUBLISHABLE_KEY exists
-  const ClerkImports = require("@clerk/clerk-react");
-  SignIn = ClerkImports.SignIn;
-  useUser = ClerkImports.useUser;
-}
+import { Link, useLocation } from "wouter";
+import { useState } from "react";
+import { LoginForm, SignUpForm } from "@/components/AuthForms";
+import { useAuth } from "@/hooks/useAuth";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Landing() {
-  const { isSignedIn, isLoaded } = useUser();
+  const { currentUser, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+  const [authMode, setAuthMode] = useState<string>("login");
+
+  // Redirect to dashboard if already logged in
+  const handleLoginSuccess = () => {
+    setLocation("/dashboard");
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
@@ -26,16 +23,17 @@ export default function Landing() {
             MediAI Assistant
           </h1>
           <div>
-            {isLoaded && isSignedIn ? (
+            {!isLoading && currentUser ? (
               <Link href="/dashboard">
                 <Button variant="default">Go to Dashboard</Button>
               </Link>
-            ) : hasClerkAuth ? (
-              <SignIn redirectUrl="/dashboard" />
             ) : (
-              <Link href="/dashboard">
-                <Button variant="default">Enter Demo</Button>
-              </Link>
+              <Button 
+                variant="outline" 
+                onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+              >
+                {authMode === "login" ? "Sign Up" : "Login"}
+              </Button>
             )}
           </div>
         </nav>
@@ -91,30 +89,45 @@ export default function Landing() {
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-3xl blur-3xl"></div>
             <div className="relative bg-white p-8 rounded-3xl shadow-xl">
-              <div className="space-y-6">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-semibold mb-2">Symptom Analysis</h4>
-                  <p className="text-sm text-slate-600">
-                    "I've been experiencing headaches and fatigue for the past week."
-                  </p>
-                </div>
-                <div className="p-4 bg-cyan-50 rounded-lg">
-                  <h4 className="font-semibold mb-2">AI Response</h4>
-                  <p className="text-sm text-slate-600">
-                    "Based on your symptoms, here are potential causes and recommended actions..."
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-gray-50 rounded-lg text-center">
-                    <p className="font-medium mb-1">Voice Input</p>
-                    <p className="text-sm text-slate-600">Speak your symptoms</p>
+              {!isLoading && currentUser ? (
+                <div className="space-y-6">
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <h4 className="font-semibold mb-2">Symptom Analysis</h4>
+                    <p className="text-sm text-slate-600">
+                      "I've been experiencing headaches and fatigue for the past week."
+                    </p>
                   </div>
-                  <div className="p-4 bg-gray-50 rounded-lg text-center">
-                    <p className="font-medium mb-1">Image Analysis</p>
-                    <p className="text-sm text-slate-600">Upload medical images</p>
+                  <div className="p-4 bg-cyan-50 rounded-lg">
+                    <h4 className="font-semibold mb-2">AI Response</h4>
+                    <p className="text-sm text-slate-600">
+                      "Based on your symptoms, here are potential causes and recommended actions..."
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-gray-50 rounded-lg text-center">
+                      <p className="font-medium mb-1">Voice Input</p>
+                      <p className="text-sm text-slate-600">Speak your symptoms</p>
+                    </div>
+                    <div className="p-4 bg-gray-50 rounded-lg text-center">
+                      <p className="font-medium mb-1">Image Analysis</p>
+                      <p className="text-sm text-slate-600">Upload medical images</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <Tabs value={authMode} onValueChange={setAuthMode}>
+                  <TabsList className="grid w-full grid-cols-2 mb-4">
+                    <TabsTrigger value="login">Login</TabsTrigger>
+                    <TabsTrigger value="signup">Sign Up</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="login">
+                    <LoginForm onSuccess={handleLoginSuccess} />
+                  </TabsContent>
+                  <TabsContent value="signup">
+                    <SignUpForm onSuccess={handleLoginSuccess} />
+                  </TabsContent>
+                </Tabs>
+              )}
             </div>
           </div>
         </main>

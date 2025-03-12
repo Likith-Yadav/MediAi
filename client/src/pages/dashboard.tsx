@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import UserProfile from "@/components/UserProfile";
 import RecentConsultations from "@/components/RecentConsultations";
@@ -9,34 +9,26 @@ import { User, Consultation } from "@/lib/types";
 import { nanoid } from "nanoid";
 import { useLocation } from "wouter";
 import { useUserProfile, useConsultations } from "@/hooks/useFirebase";
-
-// Dynamically check if Clerk is available
-const hasClerkAuth = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-// Only import Clerk components if we have the key
-let useUser: any = () => ({ user: null, isLoaded: true, isSignedIn: true });
-
-if (hasClerkAuth) {
-  // This code will only run if VITE_CLERK_PUBLISHABLE_KEY exists
-  const ClerkImports = require("@clerk/clerk-react");
-  useUser = ClerkImports.useUser;
-}
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Dashboard() {
-  // Conditionally use Clerk auth if available
-  const hasClerkAuth = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-  const clerkAuth = hasClerkAuth ? useUser() : { user: null, isLoaded: true, isSignedIn: true };
-  const { user, isLoaded, isSignedIn } = clerkAuth;
+  const { currentUser, userProfile, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  // Only redirect if Clerk auth is enabled and user is not signed in
-  if (hasClerkAuth && isLoaded && !isSignedIn) {
-    setLocation("/");
-    return null;
+  // Redirect to landing page if not logged in
+  useEffect(() => {
+    if (!isLoading && !currentUser) {
+      setLocation("/");
+    }
+  }, [isLoading, currentUser, setLocation]);
+
+  // Return null during loading or if no user is found
+  if (isLoading || !currentUser) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
   
-  // Generate a demo user ID if not authenticated via Clerk
-  const userId = user?.id || "demo-user-123";
+  // Use the Firebase user ID
+  const userId = currentUser?.uid;
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -68,21 +60,20 @@ export default function Dashboard() {
     ]);
   };
 
-  // Query user profile and consultations from Firebase
-  const { data: firebaseProfile, isLoading: isLoadingProfile } = useUserProfile(user?.id);
-  const { data: consultations = [], isLoading: isLoadingConsultations } = useConsultations(user?.id);
+  // Query consultations from Firebase
+  const { data: consultations = [], isLoading: isLoadingConsultations } = useConsultations(userId);
 
-  // Map Firebase user to UI user
-  const userProfile = firebaseProfile ? {
-    name: firebaseProfile.name,
-    email: firebaseProfile.email,
-    age: firebaseProfile.age || 0,
-    bloodType: firebaseProfile.bloodType || "Unknown",
-    allergies: firebaseProfile.allergies || "None"
+  // Map Firebase user to UI format
+  const uiProfile = userProfile ? {
+    name: userProfile.name,
+    email: userProfile.email,
+    age: userProfile.age || 0,
+    bloodType: userProfile.bloodType || "Unknown",
+    allergies: userProfile.allergies || "None"
   } : null;
 
-  if (!isLoaded || isLoadingProfile || isLoadingConsultations || !userProfile || !consultations) {
-    return <div>Loading...</div>;
+  if (isLoadingConsultations || !uiProfile) {
+    return <div className="flex items-center justify-center min-h-screen">Loading data...</div>;
   }
 
   return (
