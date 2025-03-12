@@ -1,0 +1,58 @@
+import React from "react";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { Info } from "lucide-react";
+
+interface User {
+  name: string;
+  email: string;
+}
+
+interface HeaderProps {
+  user: User;
+}
+
+export default function Header({ user }: HeaderProps) {
+  return (
+    <header className="bg-white shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-7.536 5.879a1 1 0 001.415 0 3 3 0 014.242 0 1 1 0 001.415-1.415 5 5 0 00-7.072 0 1 1 0 000 1.415z" clipRule="evenodd" />
+          </svg>
+          <span className="text-xl font-semibold text-primary">MediAI</span>
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <button type="button" className="text-slate-500 hover:text-slate-700">
+            <Info className="h-6 w-6" />
+          </button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center space-x-2 text-sm font-medium text-slate-700 hover:text-primary focus:outline-none">
+              <span>{user.name}</span>
+              <div className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center">
+                {user.name.charAt(0)}
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>Profile</DropdownMenuItem>
+              <DropdownMenuItem>Medical History</DropdownMenuItem>
+              <DropdownMenuItem>Settings</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>Sign out</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </header>
+  );
+}
