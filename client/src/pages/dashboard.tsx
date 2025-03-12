@@ -12,7 +12,7 @@ import { useUserProfile, useConsultations } from "@/hooks/useFirebase";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function Dashboard() {
-  const { currentUser, userProfile, isLoading } = useAuth();
+  const { currentUser, userProfile: firebaseUserProfile, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
   // Redirect to landing page if not logged in
@@ -60,31 +60,39 @@ export default function Dashboard() {
     ]);
   };
 
-  // Query consultations from Firebase
+  // Query consultations from Firebase (temporarily using mock data until Firebase collection is ready)
   const { data: consultations = [], isLoading: isLoadingConsultations } = useConsultations(userId);
 
   // Map Firebase user to UI format
-  const uiProfile = userProfile ? {
-    name: userProfile.name,
-    email: userProfile.email,
-    age: userProfile.age || 0,
-    bloodType: userProfile.bloodType || "Unknown",
-    allergies: userProfile.allergies || "None"
-  } : null;
+  const uiProfile = {
+    name: firebaseUserProfile?.name || "User",
+    email: firebaseUserProfile?.email || "",
+    age: firebaseUserProfile?.age || 0,
+    bloodType: firebaseUserProfile?.bloodType || "Unknown",
+    allergies: firebaseUserProfile?.allergies || "None"
+  } as User;
 
-  if (isLoadingConsultations || !uiProfile) {
+  if (isLoadingConsultations) {
     return <div className="flex items-center justify-center min-h-screen">Loading data...</div>;
   }
 
+  // Convert Firebase consultations to the expected format
+  const formattedConsultations: Consultation[] = consultations.map(c => ({
+    id: c.id,
+    title: c.title,
+    status: c.status,
+    date: c.date instanceof Date ? c.date.toISOString().split('T')[0] : String(c.date)
+  }));
+
   return (
     <div className="bg-slate-100 min-h-screen flex flex-col text-slate-800">
-      <Header user={userProfile} />
+      <Header user={uiProfile} />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 space-y-6">
-            <UserProfile user={userProfile} />
-            <RecentConsultations consultations={consultations} />
+            <UserProfile user={uiProfile} />
+            <RecentConsultations consultations={formattedConsultations} />
           </div>
           
           <div className="lg:col-span-2 flex flex-col">
