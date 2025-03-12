@@ -1,6 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseAuthUser
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -11,10 +21,18 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+console.log("Firebase Config:", {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ? "Set" : "Missing",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ? "Set" : "Missing",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ? "Set" : "Missing"
+});
+
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
 
 // Firestore collection references
 export const usersCollection = 'users';
