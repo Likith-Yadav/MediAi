@@ -1,139 +1,118 @@
-import React from "react";
-import Header from "@/components/Header";
-import UserProfile from "@/components/UserProfile";
-import RecentConsultations from "@/components/RecentConsultations";
-import ChatInterface from "@/components/ChatInterface";
-import Footer from "@/components/Footer";
-import { Message } from "@/lib/aiService";
-import { Consultation } from "@/lib/types";
-import { nanoid } from "nanoid";
-import { useLocation } from "wouter";
-import { useConsultations } from "@/hooks/useFirebase";
-import { useAuth } from "@/hooks/useAuth";
-import { FirebaseConsultation } from "@/lib/firebase";
+import React, { useState, useCallback, useContext } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { useLocation } from 'wouter';
+import { Button } from '../components/ui/button';
 
-// Create a welcome message that doesn't change on each render
-const initialWelcomeMessage = {
-  id: "welcome-message",
-  content: "Hello! I'm your MediAI Assistant. How can I help you today?\n\nYou can describe your symptoms via text, use speech-to-text, or upload relevant medical images for analysis.",
-  role: "assistant",
-  timestamp: new Date()
-} as Message;
+export function Dashboard() {
+  const { user, signOut, isLoading } = useAuth();
+  const [_, navigate] = useLocation();
+  const [activeTab, setActiveTab] = useState('chat');
 
-function DashboardContent({
-  userProfile,
-  consultations,
-  messages,
-  addMessage,
-  updateMessage,
-  clearConversation
-}: {
-  userProfile: any;
-  consultations: FirebaseConsultation[];
-  messages: Message[];
-  addMessage: (message: Message) => void;
-  updateMessage: (id: string, updates: Partial<Message>) => void;
-  clearConversation: () => void;
-}) {
-  // Format consultations for display
-  const formattedConsultations: Consultation[] = consultations.map(c => ({
-    id: c.id,
-    title: c.title,
-    status: c.status,
-    date: c.date instanceof Date ? c.date.toISOString().split('T')[0] : String(c.date)
-  }));
-  
-  // Create header user object
-  const headerUser = {
-    name: userProfile?.name || "User",
-    email: userProfile?.email || ""
-  };
-  
-  return (
-    <div className="bg-slate-100 min-h-screen flex flex-col text-slate-800">
-      <Header user={headerUser} />
-      
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-6">
-            <UserProfile user={userProfile || {}} />
-            <RecentConsultations consultations={formattedConsultations} />
-          </div>
-          
-          <div className="lg:col-span-2 flex flex-col">
-            <ChatInterface 
-              messages={messages}
-              addMessage={addMessage}
-              updateMessage={updateMessage}
-              clearConversation={clearConversation}
-            />
-          </div>
-        </div>
-      </main>
-      
-      <Footer />
-    </div>
-  );
-}
-
-export default function Dashboard() {
-  // Authentication related hooks
-  const { currentUser, userProfile, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
-  
-  // Chat related state - using a function initializer to prevent recreation on each render
-  const [messages, setMessages] = React.useState<Message[]>(() => [initialWelcomeMessage]);
-  
-  // Always fetch consultations, we'll use the result only when needed
-  const { data: consultations = [], isLoading: isLoadingConsultations } = useConsultations(
-    currentUser?.uid
-  );
-  
-  // Redirect to landing page if not logged in
+  // Redirect to landing if user is not logged in
   React.useEffect(() => {
-    if (!isLoading && !currentUser) {
-      setLocation("/");
+    if (!isLoading && !user) {
+      navigate('/');
     }
-  }, [isLoading, currentUser, setLocation]);
-  
-  // Message handling functions
-  const addMessage = React.useCallback((message: Message) => {
-    setMessages(prev => [...prev, message]);
+  }, [user, isLoading, navigate]);
+
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
   }, []);
-  
-  const updateMessage = React.useCallback((id: string, updates: Partial<Message>) => {
-    setMessages(prev => prev.map(msg => msg.id === id ? { ...msg, ...updates } : msg));
-  }, []);
-  
-  const clearConversation = React.useCallback(() => {
-    setMessages([initialWelcomeMessage]);
-  }, []);
-  
-  // Show loading state if authentication is still loading
+
+  const handleSignOut = useCallback(() => {
+    signOut();
+    navigate('/');
+  }, [signOut, navigate]);
+
   if (isLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
-  
-  // Redirect if no user is logged in
-  if (!currentUser) {
-    // We already have the useEffect at the top that handles redirection
-    return <div className="flex items-center justify-center min-h-screen">Redirecting...</div>;
-  }
-  
-  // Show loading state while consultations are being fetched
-  if (isLoadingConsultations) {
-    return <div className="flex items-center justify-center min-h-screen">Loading data...</div>;
-  }
-  
-  // Render the dashboard content
+
   return (
-    <DashboardContent
-      userProfile={userProfile}
-      consultations={consultations}
-      messages={messages}
-      addMessage={addMessage}
-      updateMessage={updateMessage}
-      clearConversation={clearConversation}
-    />
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b">
+        <div className="container flex h-16 items-center px-4 md:px-6">
+          <div className="flex w-full justify-between">
+            <h1 className="text-2xl font-bold">MedAssist AI</h1>
+            <div className="flex items-center gap-4">
+              {user && (
+                <>
+                  <span className="text-sm">Hello, {user.displayName || user.email}</span>
+                  <Button variant="ghost" onClick={handleSignOut}>
+                    Sign Out
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+      <main className="flex-1 container px-4 md:px-6 py-6">
+        <div className="flex flex-col space-y-4">
+          <div className="flex border-b">
+            <button
+              className={`px-4 py-2 ${activeTab === 'chat' ? 'border-b-2 border-primary font-medium' : ''}`}
+              onClick={() => handleTabChange('chat')}
+            >
+              Chat Consultation
+            </button>
+            <button
+              className={`px-4 py-2 ${activeTab === 'upload' ? 'border-b-2 border-primary font-medium' : ''}`}
+              onClick={() => handleTabChange('upload')}
+            >
+              Image Analysis
+            </button>
+            <button
+              className={`px-4 py-2 ${activeTab === 'voice' ? 'border-b-2 border-primary font-medium' : ''}`}
+              onClick={() => handleTabChange('voice')}
+            >
+              Voice Input
+            </button>
+          </div>
+
+          {activeTab === 'chat' && (
+            <div className="grid gap-4">
+              <div className="border rounded-lg p-4">
+                <h2 className="text-lg font-medium mb-4">Chat with MedAssist AI</h2>
+                <p className="text-gray-500 mb-4">
+                  Describe your symptoms or health concerns and receive an AI-powered initial assessment.
+                </p>
+                <div className="flex gap-2">
+                  <Button>Start New Consultation</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'upload' && (
+            <div className="grid gap-4">
+              <div className="border rounded-lg p-4">
+                <h2 className="text-lg font-medium mb-4">Upload Medical Images</h2>
+                <p className="text-gray-500 mb-4">
+                  Upload X-rays, skin conditions, or other medical images for AI analysis.
+                </p>
+                <div className="flex gap-2">
+                  <Button>Upload Image</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'voice' && (
+            <div className="grid gap-4">
+              <div className="border rounded-lg p-4">
+                <h2 className="text-lg font-medium mb-4">Voice Input</h2>
+                <p className="text-gray-500 mb-4">
+                  Describe your symptoms by voice for a quick initial assessment.
+                </p>
+                <div className="flex gap-2">
+                  <Button>Start Recording</Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }
