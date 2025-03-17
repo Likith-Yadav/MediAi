@@ -8,9 +8,8 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase";
+import { useAuth } from "@/hooks/use-auth";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { FirebaseUser } from "@/lib/firebase";
 
 interface UserProps {
@@ -32,6 +31,8 @@ export default function UserProfile({ user }: UserProps) {
     allergies: user.allergies || "",
     photoURL: user.photoURL || ""
   });
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -42,15 +43,36 @@ export default function UserProfile({ user }: UserProps) {
     setFormData(prev => ({ ...prev, bloodType: value }));
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setProfileImage(e.target.files[0]);
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    console.log('Image selected:', {
+      name: file.name,
+      type: file.type,
+      size: file.size
+    });
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please upload an image file');
+      return;
     }
+
+    // Validate file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size should be less than 5MB');
+      return;
+    }
+
+    setProfileImage(file);
+    setError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
 
     try {
       let photoURL = user.photoURL;
@@ -58,41 +80,40 @@ export default function UserProfile({ user }: UserProps) {
       // Upload image if a new one is selected
       if (profileImage) {
         try {
-          // First, try the upload
-          const storageRef = ref(storage, `profile-images/${user.uid}/${profileImage.name}`);
-          const snapshot = await uploadBytes(storageRef, profileImage);
-          photoURL = await getDownloadURL(snapshot.ref);
-        } catch (uploadError: any) {
-          console.error("Image upload error:", uploadError);
-
-          // Show specific error toast for CORS issues
-          if (uploadError.message?.includes("CORS") || 
-              uploadError.code === "storage/unauthorized" || 
-              uploadError.code === "cors-error") {
-            toast({
-              variant: "destructive",
-              title: "Image upload failed",
-              description: "Your Firebase Storage CORS settings need to be configured to allow uploads from this domain. Continuing without image update.",
-            });
-          } else {
-            toast({
-              variant: "destructive",
-              title: "Image upload failed",
-              description: "Could not upload profile image. Continuing with other profile updates."
-            });
-          }
-          // Continue with the rest of the profile update, without the new image
+          setIsUploading(true);
+          console.log('Starting image upload to Cloudinary...');
+          photoURL = await uploadToCloudinary(profileImage);
+          console.log('Image uploaded successfully:', photoURL);
+          
+          // Show success message
+          toast({
+            title: "Image uploaded!",
+            description: "Your profile picture has been updated successfully."
+          });
+        } catch (error: any) {
+          console.error('Error uploading image:', error);
+          setError(error.message || 'Failed to upload image');
+          return;
+        } finally {
+          setIsUploading(false);
         }
       }
 
-      // Update profile data
-      await updateProfile({
+      // Prepare profile data
+      const profileData: Partial<FirebaseUser> = {
         name: formData.name,
-        age: formData.age ? parseInt(formData.age.toString()) : undefined,
         bloodType: formData.bloodType,
         allergies: formData.allergies,
         photoURL
-      });
+      };
+
+      // Only include age if it's not empty
+      if (formData.age) {
+        profileData.age = parseInt(formData.age.toString());
+      }
+
+      // Update profile data
+      await updateProfile(profileData);
 
       toast({
         title: "Profile updated!",
@@ -101,22 +122,7 @@ export default function UserProfile({ user }: UserProps) {
       setIsEditing(false);
     } catch (error: any) {
       console.error("Profile update error:", error);
-
-      let errorTitle = "Update failed";
-      let errorMessage = "Failed to update profile. Please try again.";
-
-      if (error.code === "permission-denied" || error.code === "storage/unauthorized") {
-        errorTitle = "Firebase permissions error";
-        errorMessage = "You don't have permission to update this profile. Check your Firebase rules configuration.";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      toast({
-        variant: "destructive",
-        title: errorTitle,
-        description: errorMessage
-      });
+      setError(error.message || "Failed to update profile. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -193,16 +199,24 @@ export default function UserProfile({ user }: UserProps) {
               )}
             </Avatar>
 
-            <Label htmlFor="photo" className="cursor-pointer text-primary text-sm font-medium">
-              Change Profile Photo
-              <Input 
-                id="photo" 
-                type="file" 
-                accept="image/*" 
-                className="hidden" 
-                onChange={handleImageChange}
-              />
-            </Label>
+            <div className="flex flex-col items-center gap-2">
+              <Label htmlFor="photo" className="cursor-pointer text-primary text-sm font-medium">
+                {isUploading ? "Uploading..." : "Change Profile Photo"}
+                <Input 
+                  id="photo" 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={handleImageChange}
+                  disabled={isUploading}
+                />
+              </Label>
+              {isUploading && (
+                <div className="text-sm text-blue-500">
+                  Please wait while we upload your image...
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -259,22 +273,28 @@ export default function UserProfile({ user }: UserProps) {
             </div>
           </div>
 
+          {error && (
+            <div className="text-red-500 text-sm">
+              {error}
+            </div>
+          )}
+
           <div className="flex space-x-2 pt-2">
             <Button 
               type="button" 
               variant="outline" 
               className="flex-1"
               onClick={() => setIsEditing(false)}
-              disabled={isLoading}
+              disabled={isLoading || isUploading}
             >
               Cancel
             </Button>
             <Button 
               type="submit" 
               className="flex-1"
-              disabled={isLoading}
+              disabled={isLoading || isUploading}
             >
-              {isLoading ? "Saving..." : "Save Changes"}
+              {isLoading || isUploading ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </form>

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import { LoginForm, SignUpForm } from "@/components/AuthForms";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/use-auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Landing() {

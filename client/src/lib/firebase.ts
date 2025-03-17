@@ -64,33 +64,46 @@ let storage: FirebaseStorage;
 let auth: Auth;
 let googleProvider: GoogleAuthProvider;
 
-// Initialize Firebase only if configuration is valid
-if (validConfig) {
-  try {
-    app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    storage = getStorage(app);
-    auth = getAuth(app);
-    googleProvider = new GoogleAuthProvider();
-    
-    console.log("Firebase successfully initialized");
-  } catch (error) {
-    console.error("Firebase initialization error:", error);
-    // Create dummy implementations to prevent app crashes
-    app = {} as FirebaseApp;
-    db = {} as Firestore;
-    storage = {} as FirebaseStorage;
-    auth = {} as Auth;
-    googleProvider = {} as GoogleAuthProvider;
+// Initialize Firebase
+try {
+  if (!validConfig) {
+    console.error("Firebase config validation failed:", firebaseConfig);
+    throw new Error("Firebase configuration is invalid");
   }
-} else {
-  console.error("Firebase configuration is invalid, using mock implementations");
-  // Create dummy implementations to prevent app crashes
-  app = {} as FirebaseApp;
-  db = {} as Firestore;
-  storage = {} as FirebaseStorage;
-  auth = {} as Auth;
-  googleProvider = {} as GoogleAuthProvider;
+  
+  console.log("Initializing Firebase with config:", {
+    ...firebaseConfig,
+    apiKey: firebaseConfig.apiKey ? "Present" : "Missing"
+  });
+  
+  app = initializeApp(firebaseConfig);
+  console.log("Firebase app initialized");
+  
+  auth = getAuth(app);
+  console.log("Firebase auth initialized");
+  
+  db = getFirestore(app);
+  console.log("Firebase Firestore initialized");
+  
+  storage = getStorage(app);
+  // Configure storage to use the correct bucket
+  const storageBucket = firebaseConfig.storageBucket;
+  if (storageBucket) {
+    storage = getStorage(app, `gs://${storageBucket}`);
+  }
+  console.log("Firebase storage initialized");
+  
+  googleProvider = new GoogleAuthProvider();
+  console.log("Google provider initialized");
+  
+  console.log("Firebase successfully initialized");
+} catch (error) {
+  console.error("Firebase initialization error details:", error);
+  if (error instanceof Error) {
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+  }
+  throw new Error("Failed to initialize Firebase. Please check your configuration.");
 }
 
 export { app, db, storage, auth, googleProvider };
