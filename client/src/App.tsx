@@ -10,7 +10,7 @@ import MedicalHistory from "@/pages/medical-history";
 import Settings from "@/pages/settings";
 import { AuthProvider } from "@/hooks/use-auth";
 
-// Router component to handle routing
+
 function Router() {
   return (
     <Switch>
