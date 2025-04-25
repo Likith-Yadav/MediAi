@@ -5,15 +5,20 @@ import { Paperclip, Mic, Send } from "lucide-react";
 import { createRecorder, blobToBase64 } from "@/lib/recorder";
 import { convertSpeechToText } from "@/lib/aiService";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Image as ImageIcon } from "lucide-react";
 
 interface ChatInputProps {
   onSendMessage: (text: string) => void;
+  onImageAnalysis: (file: File, prompt: string) => Promise<void>;
   onToggleFileUpload: () => void;
   onClearConversation: () => void;
 }
 
 export default function ChatInput({ 
   onSendMessage, 
+  onImageAnalysis,
   onToggleFileUpload,
   onClearConversation
 }: ChatInputProps) {
@@ -87,82 +92,98 @@ export default function ChatInput({
     }
   };
   
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedImage(e.target.files[0]);
+      setShowImageDialog(true);
+    }
+  };
+
+  const handleImageAnalysis = async () => {
+    if (selectedImage && imagePrompt.trim()) {
+      try {
+        await onImageAnalysis(selectedImage, imagePrompt);
+        setShowImageDialog(false);
+        setSelectedImage(null);
+        setImagePrompt("");
+      } catch (error: any) {
+        toast({
+          variant: "destructive",
+          title: "Analysis failed",
+          description: error.message,
+        });
+      }
+    }
+  };
+
   return (
-    <div className="border-t border-slate-200 p-4">
-      <div className="flex items-end space-x-2">
-        <Button 
-          type="button" 
-          variant="ghost" 
-          size="icon" 
-          className="rounded-full text-slate-500 hover:text-primary hover:bg-slate-100"
-          onClick={onToggleFileUpload}
-        >
-          <Paperclip className="h-5 w-5" />
-          <span className="sr-only">Attach files</span>
-        </Button>
-        
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={`rounded-full hover:bg-slate-100 ${
-            isRecording ? "text-red-500 bg-red-100" : "text-slate-500 hover:text-primary"
-          }`}
-          onClick={toggleRecording}
-        >
-          <Mic className="h-5 w-5" />
-          <span className="sr-only">Record audio</span>
-        </Button>
-        
-        <div className="flex-1 relative">
+    <>
+      <div className="border-t border-gray-200 p-4">
+        <div className="flex items-end gap-2">
           <Textarea
             ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Describe your symptoms or ask a question..."
-            className="w-full border border-slate-300 rounded-lg py-2 pl-3 pr-10 focus:ring-2 focus:ring-primary focus:border-primary text-sm resize-none min-h-[40px] max-h-[200px] overflow-y-auto"
+            placeholder="Type your message..."
+            className="min-h-[60px] resize-none"
             rows={1}
           />
-          
-          {isRecording && (
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <div className="flex items-center text-red-500">
-                <span className="relative flex h-3 w-3 mr-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                </span>
-                <span className="text-xs">Recording...</span>
+          <div className="flex gap-2">
+            <input
+              type="file"
+              ref={imageInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={handleImageSelect}
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => imageInputRef.current?.click()}
+            >
+              <ImageIcon className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Analyze Medical Image</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedImage && (
+              <div className="rounded-lg overflow-hidden">
+                <img
+                  src={URL.createObjectURL(selectedImage)}
+                  alt="Selected"
+                  className="max-h-48 w-full object-contain"
+                />
               </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="imagePrompt">Describe what you'd like to analyze about this image:</Label>
+              <Textarea
+                id="imagePrompt"
+                value={imagePrompt}
+                onChange={(e) => setImagePrompt(e.target.value)}
+                placeholder="E.g., Please analyze this X-ray for any abnormalities..."
+                rows={3}
+              />
             </div>
-          )}
-        </div>
-        
-        <Button
-          type="button"
-          size="icon"
-          className="rounded-full"
-          disabled={!message.trim()}
-          onClick={handleSendMessage}
-        >
-          <Send className="h-5 w-5" />
-          <span className="sr-only">Send message</span>
-        </Button>
-      </div>
-      
-      <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
-        <div>
-          <button 
-            className="hover:text-primary"
-            onClick={onClearConversation}
-          >
-            Clear conversation
-          </button>
-        </div>
-        <div>
-          <span>MediAI is designed to assist, not replace professional medical advice</span>
-        </div>
-      </div>
-    </div>
+            <Button onClick={handleImageAnalysis} className="w-full">
+              Analyze Image
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

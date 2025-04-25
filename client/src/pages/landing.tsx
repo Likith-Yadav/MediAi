@@ -5,6 +5,7 @@ import { LoginForm, SignUpForm } from "@/components/AuthForms";
 import { useAuth } from "@/hooks/use-auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AuroraUI from "@/components/AuroraUI";
+import SparkWrapper from "@/components/SparkWrapper";
 
 export default function Landing() {
   const { currentUser, isLoading } = useAuth();
@@ -21,16 +22,18 @@ export default function Landing() {
       <div className="page-container">
         {/* Hero Section */}
         <div className="text-center mb-16">
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="p-3 rounded-xl bg-blue-600/10">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-              </svg>
+          <SparkWrapper>
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <div className="p-3 rounded-xl bg-blue-600/10">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+              </div>
+              <h1 className="text-4xl md:text-6xl font-bold gradient-text">
+                MediAI Assistant
+              </h1>
             </div>
-            <h1 className="text-4xl md:text-6xl font-bold gradient-text">
-              MediAI Assistant
-            </h1>
-          </div>
+          </SparkWrapper>
           <p className="text-xl text-black max-w-2xl mx-auto">
             Your intelligent healthcare companion powered by advanced AI
           </p>
@@ -48,39 +51,47 @@ export default function Landing() {
               Get instant medical advice, symptoms analysis, and health recommendations powered by advanced AI. Describe your symptoms through text, voice, or images for comprehensive health insights.
             </p>
             <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                  <span className="text-blue-600 text-xl">✓</span>
+              <SparkWrapper>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                    <span className="text-blue-600 text-xl">✓</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1 feature-text">Multi-Modal Input</h3>
+                    <p className="feature-description">
+                      Describe symptoms via text, voice messages, or medical images
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold mb-1 feature-text">Multi-Modal Input</h3>
-                  <p className="feature-description">
-                    Describe symptoms via text, voice messages, or medical images
-                  </p>
+              </SparkWrapper>
+              
+              <SparkWrapper>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                    <span className="text-blue-600 text-xl">✓</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1 feature-text">AI-Powered Analysis</h3>
+                    <p className="feature-description">
+                      Get instant analysis of your symptoms and potential conditions
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                  <span className="text-blue-600 text-xl">✓</span>
+              </SparkWrapper>
+              
+              <SparkWrapper>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                    <span className="text-blue-600 text-xl">✓</span>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1 feature-text">Secure & Private</h3>
+                    <p className="feature-description">
+                      Your health data is encrypted and protected with enterprise-grade security
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold mb-1 feature-text">AI-Powered Analysis</h3>
-                  <p className="feature-description">
-                    Get instant analysis of your symptoms and potential conditions
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                  <span className="text-blue-600 text-xl">✓</span>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1 feature-text">Secure & Private</h3>
-                  <p className="feature-description">
-                    Your health data is encrypted and protected with enterprise-grade security
-                  </p>
-                </div>
-              </div>
+              </SparkWrapper>
             </div>
           </div>
 
@@ -89,42 +100,57 @@ export default function Landing() {
             <div className="relative bg-white p-8 rounded-3xl shadow-xl">
               {!isLoading && currentUser ? (
                 <div className="space-y-6">
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <h4 className="font-semibold mb-2 feature-text">Symptom Analysis</h4>
-                    <p className="text-sm text-slate-700">
-                      "I've been experiencing headaches and fatigue for the past week."
-                    </p>
-                  </div>
-                  <div className="p-4 bg-cyan-50 rounded-lg">
-                    <h4 className="font-semibold mb-2 feature-text">AI Response</h4>
-                    <p className="text-sm text-slate-700">
-                      "Based on your symptoms, here are potential causes and recommended actions..."
-                    </p>
-                  </div>
+                  <SparkWrapper>
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                      <h4 className="font-semibold mb-2 feature-text">Symptom Analysis</h4>
+                      <p className="text-sm text-slate-700">
+                        "I've been experiencing headaches and fatigue for the past week."
+                      </p>
+                    </div>
+                  </SparkWrapper>
+                  
+                  <SparkWrapper>
+                    <div className="p-4 bg-cyan-50 rounded-lg">
+                      <h4 className="font-semibold mb-2 feature-text">AI Response</h4>
+                      <p className="text-sm text-slate-700">
+                        "Based on your symptoms, here are potential causes and recommended actions..."
+                      </p>
+                    </div>
+                  </SparkWrapper>
+                  
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-lg text-center">
-                      <p className="font-medium mb-1 feature-text">Voice Input</p>
-                      <p className="text-sm text-slate-700">Speak your symptoms</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg text-center">
-                      <p className="font-medium mb-1 feature-text">Image Analysis</p>
-                      <p className="text-sm text-slate-700">Upload medical images</p>
-                    </div>
+                    <SparkWrapper>
+                      <div className="p-4 bg-gray-50 rounded-lg text-center">
+                        <p className="font-medium mb-1 feature-text">Voice Input</p>
+                        <p className="text-sm text-slate-700">Speak your symptoms</p>
+                      </div>
+                    </SparkWrapper>
+                    
+                    <SparkWrapper>
+                      <div className="p-4 bg-gray-50 rounded-lg text-center">
+                        <p className="font-medium mb-1 feature-text">Image Analysis</p>
+                        <p className="text-sm text-slate-700">Upload medical images</p>
+                      </div>
+                    </SparkWrapper>
                   </div>
                 </div>
               ) : (
                 <Tabs value={authMode} onValueChange={setAuthMode}>
-                  <TabsList className="grid w-full grid-cols-2 mb-4">
-                    <TabsTrigger value="login">Login</TabsTrigger>
-                    <TabsTrigger value="signup">Sign Up</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="login">
-                    <LoginForm onSuccess={handleLoginSuccess} />
-                  </TabsContent>
-                  <TabsContent value="signup">
-                    <SignUpForm onSuccess={handleLoginSuccess} />
-                  </TabsContent>
-                </Tabs>
+  <TabsList className="grid w-full grid-cols-2 mb-4 justify-items-center">
+    <SparkWrapper>
+      <TabsTrigger value="login" className="w-full text-center">Login</TabsTrigger>
+    </SparkWrapper>
+    <SparkWrapper>
+      <TabsTrigger value="signup" className="w-full text-center">Sign Up</TabsTrigger>
+    </SparkWrapper>
+  </TabsList>
+  <TabsContent value="login">
+    <LoginForm onSuccess={handleLoginSuccess} />
+  </TabsContent>
+  <TabsContent value="signup">
+    <SignUpForm onSuccess={handleLoginSuccess} />
+  </TabsContent>
+</Tabs>
               )}
             </div>
           </div>

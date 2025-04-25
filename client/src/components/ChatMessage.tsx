@@ -33,7 +33,12 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
           </div>
         ) : (
-          <div className="text-sm whitespace-pre-line">
+          <div className="text-sm whitespace-pre-line space-y-4">
+            {message.image && (
+              <div className="mb-4">
+                <img src={message.image} alt="Medical scan" className="rounded-lg max-w-full h-auto" />
+              </div>
+            )}
             {parseMessageContent(message.content)}
           </div>
         )}
@@ -43,7 +48,8 @@ export default function ChatMessage({ message }: ChatMessageProps) {
 }
 
 function parseMessageContent(content: string) {
-  // This is a simple parser that could be expanded to handle markdown or custom formatting
-  // For now, we'll just render the content with pre-line whitespace handling
+  // Remove markdown bold markers
+  content = content.replace(/\*\*(.*?)\*\*/g, '$1');
+  // Handle other markdown formatting if needed
   return content;
 }

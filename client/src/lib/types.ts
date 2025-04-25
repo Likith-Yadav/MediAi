@@ -12,6 +12,10 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date | string; // Can be Date object or ISO string
+  isLoading?: boolean;
+  image?: string; // URL to the image stored in Cloudinary
+  imagePrompt?: string; // The prompt used for image analysis
+  suggestsBooking?: boolean;
 }
 
 export interface Consultation {

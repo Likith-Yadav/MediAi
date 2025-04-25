@@ -172,6 +172,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = async (email: string, password: string) => {
     const result = await signInWithEmailAndPassword(auth, email, password);
+    
+    if (!result.user.emailVerified) {
+      // Resend verification email if needed
+      await sendEmailVerification(result.user);
+      throw new Error('Please verify your email before logging in. A new verification email has been sent.');
+    }
+    
     await fetchUserProfile(result.user.uid);
   };
 
@@ -201,8 +208,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     await saveUserProfile(result.user.uid, newUser);
-    await fetchUserProfile(result.user.uid);
+    await sendEmailVerification(result.user);
+    
+    // Sign out the user after sending verification email
+    await signOut(auth);
+    
+    return {
+      status: 'verification_needed',
+      message: 'Please check your email for verification link before logging in.'
+    };
   };
+
+  // Remove this line as it's causing the error
+  // await fetchUserProfile(result.user.uid);
 
   const updateEmail = async (newEmail: string, currentPassword: string) => {
     if (!currentUser) throw new Error('No user logged in');
@@ -280,4 +298,4 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 export function useAuth() {
   return useContext(AuthContext);
-} 
+}

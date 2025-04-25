@@ -16,6 +16,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  image?: string; // Base64 encoded image data
+  isLoading?: boolean;
 }
 
 export const medicalChatService = {
@@ -68,54 +70,68 @@ Please respond in a professional, caring manner.`;
 };
 
 export const medicalAnalysisService = {
-  async analyzeImage(file: File): Promise<string> {
+  async analyzeImage(file: File, userPrompt: string): Promise<string> {
     try {
-      console.log('Starting image analysis for:', file.name);
+      console.log('Starting image analysis with prompt:', userPrompt);
       
       const data = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(file);
       });
-
+  
       const imageData = {
         inlineData: {
           data: data.split(',')[1],
           mimeType: file.type,
         },
       };
+  
+      const prompt = `You are a medical professional analyzing this medical image. The patient asks: "${userPrompt}"
 
-      const prompt = `You are a medical professional analyzing this medical image. Please provide:
-1. A detailed analysis of what you observe
-2. Any potential abnormalities or concerns
-3. Recommendations for follow-up
-4. Important notes for the patient
+Please provide a comprehensive analysis in the following format:
 
-Please be thorough but explain in terms a patient can understand.`;
+Image Type: [Specify the exact type of medical image - X-ray, MRI, CT scan, etc.]
+
+Anatomical Region: [Specify the body part or organ system being examined]
+
+Key Findings:
+1. [List primary observations with specific details]
+2. [Note any abnormalities, masses, or concerning features]
+3. [Describe tissue characteristics, density variations, or structural changes]
+
+Clinical Interpretation:
+- [Provide detailed explanation of findings]
+- [Discuss potential medical implications]
+- [Compare with normal expectations]
+
+Recommendations:
+1. [Specific medical follow-up needed]
+2. [Additional tests if required]
+3. [Lifestyle or preventive measures]
+
+Important Notes:
+- [Critical information for patient awareness]
+- [Limitations of the analysis]
+- [Reminder about professional medical consultation]
+
+Please be thorough and precise while explaining in patient-friendly terms.`;
 
       const visionModel = genAI.getGenerativeModel({ 
         model: "gemini-1.5-flash",
       }, { apiVersion: "v1" });
       
-      console.log('Sending image to Gemini for analysis...');
       const result = await visionModel.generateContent([prompt, imageData]);
-      console.log('Received analysis from Gemini:', result);
-      
       const response = await result.response;
       const text = response.text();
-      console.log('Analysis text:', text);
-
+  
       if (!text) {
         throw new Error('Empty response from AI');
       }
-
-      return text;
+  
+      return text.trim();
     } catch (error: any) {
-      console.error('Image analysis error:', {
-        error: error.name,
-        message: error.message,
-        stack: error.stack,
-      });
+      console.error('Image analysis error:', error);
       throw new Error(`Failed to analyze medical image: ${error.message}`);
     }
   }

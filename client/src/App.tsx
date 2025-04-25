@@ -9,7 +9,7 @@ import Profile from "@/pages/profile";
 import MedicalHistory from "@/pages/medical-history";
 import Settings from "@/pages/settings";
 import { AuthProvider } from "@/hooks/use-auth";
-
+import SymptomDiaryPage from "@/app/symptom-diary/page";
 
 function Router() {
   return (
@@ -18,6 +18,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/profile" component={Profile} />
       <Route path="/medical-history" component={MedicalHistory} />
+      <Route path="/symptom-diary" component={SymptomDiaryPage} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
