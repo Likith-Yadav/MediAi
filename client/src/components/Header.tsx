@@ -182,8 +182,17 @@ export default function Header({ user, onStartTour }: HeaderProps) {
                       </DropdownMenuItem>
                     </SparkWrapper>
                     <SparkWrapper>
+                      <DropdownMenuItem onClick={() => handleNavigation('/appointments')} className="focus:bg-slate-500/10">
+                        <div className="flex items-center">
+                          My Appointments
+                          <span className="ml-2 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs">New</span>
+                        </div>
+                      </DropdownMenuItem>
+                    </SparkWrapper>
+                    <SparkWrapper>
                       <DropdownMenuItem onClick={() => handleNavigation('/symptom-diary')} className="focus:bg-slate-500/10">
                         Symptom Diary
+                        <span className="ml-2 px-1.5 py-0.5 bg-primary/10 text-primary rounded text-xs">New</span>
                       </DropdownMenuItem>
                     </SparkWrapper>
                     <SparkWrapper>

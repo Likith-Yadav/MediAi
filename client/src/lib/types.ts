@@ -16,6 +16,8 @@ export interface Message {
   image?: string; // URL to the image stored in Cloudinary
   imagePrompt?: string; // The prompt used for image analysis
   suggestsBooking?: boolean;
+  appointmentId?: string; // ID of the appointment if this message is related to an appointment
+  isAppointmentUpdate?: boolean; // Flag to indicate if this message is an appointment status update
 }
 
 export interface Consultation {

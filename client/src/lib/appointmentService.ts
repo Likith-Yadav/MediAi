@@ -251,65 +251,31 @@ export const requestAppointment = async (details: any): Promise<any> => {
     // Create a copy of the details to avoid modifying the original
     const formattedDetails = { ...details };
     
-    // Format IDs if present to ensure they're compatible with MongoDB
+    // Format doctorId if needed (ensure it's a valid MongoDB ID)
     if (formattedDetails.doctorId) {
       formattedDetails.doctorId = formatIdForApi(formattedDetails.doctorId, 'doctorId');
     }
     
-    // Handle patient ID and registration if needed
-    let patientId = formattedDetails.patientId;
+    // Direct approach: Embed patient information in the appointment request
+    // This assumes the API will handle patient registration if needed
     
-    // If we have an externalPatientId (Firebase UID), try to find or create a patient
+    // If we have the Firebase UID, pass it along in a way the API can recognize
     if (formattedDetails.externalPatientId) {
-      // Try to find the patient first
-      const existingPatient = await findPatientByExternalId(formattedDetails.externalPatientId);
-      
-      if (existingPatient && existingPatient._id) {
-        console.log("Found existing patient:", existingPatient);
-        patientId = existingPatient._id;
-      } else {
-        // Patient doesn't exist, create a new one
-        console.log("Creating new patient with external ID:", formattedDetails.externalPatientId);
-        const newPatient = await createPatient({
-          name: formattedDetails.patientName,
-          email: formattedDetails.patientEmail,
-          phone: formattedDetails.patientPhone || "",
-          externalId: formattedDetails.externalPatientId
-        });
-        
-        if (newPatient && newPatient._id) {
-          console.log("Created new patient with ID:", newPatient._id);
-          patientId = newPatient._id;
-        } else {
-          throw new Error("Failed to create patient record");
-        }
-      }
+      formattedDetails.patientExternalId = formattedDetails.externalPatientId;
     }
     
-    // Update the patientId with the real MongoDB ID
-    if (patientId) {
-      formattedDetails.patientId = patientId;
-    }
-    
+    // Format slot ID if present
     if (formattedDetails.slotId) {
       formattedDetails.slotId = formatIdForApi(formattedDetails.slotId, 'slotId');
     }
     
-    // Ensure we have all required fields
-    const requiredFields = ["patientId", "doctorId", "date", "time", "patientName", "patientEmail"];
-    const missingFields = requiredFields.filter(field => !formattedDetails[field]);
+    // Log what we're sending
+    console.log("Appointment request payload:", JSON.stringify(formattedDetails, null, 2));
     
-    if (missingFields.length > 0) {
-      console.warn("Missing required fields:", missingFields);
-      throw new Error(`Missing required fields: ${missingFields.join(", ")}`);
-    }
-    
-    // Try the main appointments endpoint
+    // Direct call to the appointments endpoint
     const url = `${API_BASE_URL}/appointments`;
     
     console.log(`Calling API URL: ${url}`);
-    console.log(`Request method: POST`);
-    console.log(`Request body after formatting:`, formattedDetails);
     
     const response = await fetch(url, {
       method: 'POST',

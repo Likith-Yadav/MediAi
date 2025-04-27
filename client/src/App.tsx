@@ -10,6 +10,7 @@ import MedicalHistory from "@/pages/medical-history";
 import Settings from "@/pages/settings";
 import { AuthProvider } from "@/hooks/use-auth";
 import SymptomDiaryPage from "@/app/symptom-diary/page";
+import Appointments from "@/pages/appointments";
 
 function Router() {
   return (
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/medical-history" component={MedicalHistory} />
       <Route path="/symptom-diary" component={SymptomDiaryPage} />
       <Route path="/settings" component={Settings} />
+      <Route path="/appointments" component={Appointments} />
       <Route component={NotFound} />
     </Switch>
   );

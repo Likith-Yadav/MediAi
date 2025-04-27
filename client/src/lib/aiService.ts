@@ -12,12 +12,16 @@ console.log('API Key loaded:', apiKey);
 const genAI = new GoogleGenerativeAI(apiKey);
 
 export interface Message {
-  id: string;
   role: 'user' | 'assistant';
+  id: string;
   content: string;
-  timestamp: Date;
-  image?: string; // Base64 encoded image data
+  timestamp: Date | string;
   isLoading?: boolean;
+  image?: string;
+  imagePrompt?: string;
+  suggestsBooking?: boolean;
+  appointmentId?: string;
+  isAppointmentUpdate?: boolean;
 }
 
 export const medicalChatService = {

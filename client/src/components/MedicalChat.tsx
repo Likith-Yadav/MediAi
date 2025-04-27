@@ -62,8 +62,13 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   // Update messages when selectedConsultation changes
   useEffect(() => {
     if (selectedConsultation?.id && selectedConsultation?.messages) {
-      setMessages(selectedConsultation.messages);
+      // Process messages to remove duplicates
+      const uniqueMessages = removeDuplicateMessages(selectedConsultation.messages);
+      setMessages(uniqueMessages);
       setCurrentConsultation(selectedConsultation.id);
+      
+      // Check for any pending appointments in the messages and resume status checks
+      checkForPendingAppointments(uniqueMessages);
     }
   }, [selectedConsultation]);
 
@@ -630,47 +635,70 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       // Get the MongoDB ObjectId for the doctor
       const doctorId = selectedDoctor._id || selectedDoctor.id;
       
-      // Log the doctor ID being used
-      console.log("Using doctor ID for appointment:", doctorId);
-      
       // Extract date and time from the slot
       const appointmentDate = slot.date || slot.appointmentDate;
       const appointmentTime = slot.time || slot.startTime;
       
+      // Get symptoms from previous messages (last user message or a few messages combined)
+      const extractSymptoms = (): string => {
+        // Find the last few user messages to extract symptoms
+        const userMessages = messages
+          .filter(msg => msg.role === 'user')
+          .slice(-3); // Get last 3 user messages
+        
+        if (userMessages.length === 0) {
+          return "General consultation";
+        }
+        
+        // Combine the content of user messages, with a maximum length
+        const combinedSymptoms = userMessages
+          .map(msg => msg.content)
+          .join("; ")
+          .substring(0, 100); // Limit to 100 characters
+        
+        return combinedSymptoms || "General consultation";
+      };
+      
+      // Extract symptoms for the reason field
+      const symptoms = extractSymptoms();
+      
       // Prepare the appointment data for the API
-      const appointmentData: any = {
+      const appointmentData = {
         // Doctor details
         doctorId: doctorId,
         doctorName: selectedDoctor.name || 
                    (selectedDoctor.firstName ? `${selectedDoctor.firstName} ${selectedDoctor.lastName}` : "Doctor"),
         
-        // Patient details - using Firebase user information
+        // Patient details - include EVERYTHING the API might need
         patientName: currentUser.displayName || "Patient",
         patientEmail: currentUser.email || "patient@example.com",
         patientPhone: "", // Add if available
         
-        // Store the Firebase UID as external ID for patient lookup/creation
+        // Include the external ID for the backend to handle
         externalPatientId: currentUser.uid,
+        patientExternalId: currentUser.uid,
         
-        // Appointment details
+        // Flag for API to handle patient creation if needed
+        createPatientIfNeeded: true,
+        
+        // Appointment details  
         date: appointmentDate,
         time: appointmentTime,
         dateTime: slot.dateTime || `${appointmentDate}T${appointmentTime}`,
         status: "pending",
         
-        // Additional fields
-        reason: "Consultation from MediAI",
+        // Slot ID if available
+        slotId: slot._id || slot.id,
+        
+        // Include patient symptoms in the reason field
+        reason: `${symptoms} - Consultation from MediAI`,
         notes: "Appointment booked via MediAI assistant",
       };
-      
-      // If slot has its own ID, include it
-      if (slot._id) appointmentData.slotId = slot._id;
-      if (slot.id) appointmentData.slotId = slot.id;
       
       // Log the appointment data we're sending
       console.log("SENDING APPOINTMENT DATA:", JSON.stringify(appointmentData, null, 2));
       
-      // The service will handle patient creation/lookup based on externalPatientId
+      // Send request directly to appointments endpoint
       const response = await AppointmentService.requestAppointment(appointmentData);
       console.log("Appointment request response:", response);
 
@@ -678,22 +706,36 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       const doctorName = selectedDoctor.name || 
                         (selectedDoctor.firstName ? `${selectedDoctor.firstName} ${selectedDoctor.lastName}` : 'the doctor');
       
+      // Update the message to include appointment ID
+      const updatedMessage: Message = {
+        ...requestingMessage,
+        content: `Appointment request sent! You will be notified once ${doctorName} confirms for ${appointmentDate} at ${appointmentTime}.`,
+        isLoading: false,
+        appointmentId: response.appointmentId // Store the appointment ID
+      };
+      
       setMessages(prev => prev.map(msg => 
-        msg.id === requestingMessage.id 
-          ? { ...msg, content: `Appointment request sent! You will be notified once ${doctorName} confirms for ${appointmentDate} at ${appointmentTime}.`, isLoading: false } 
-          : msg
+        msg.id === requestingMessage.id ? updatedMessage : msg
       ));
       
-      // Optionally show the appointment ID if returned
+      // Also store in Firestore
+      if (currentConsultation) {
+        await addMessageToConsultation(currentConsultation, updatedMessage);
+      }
+      
+      // Show appointment ID in toast if available
       if (response && response.appointmentId) {
         toast({
           title: "Appointment Requested",
           description: `Appointment ID: ${response.appointmentId}`,
         });
+        
+        // Reset the booking flow with appointment ID for status checks
+        resetBookingFlow(response.appointmentId);
+      } else {
+        // Reset without ID if no appointment ID returned
+        resetBookingFlow();
       }
-      
-      // Reset the booking flow
-      resetBookingFlow();
 
     } catch (error: any) { 
       console.error("Error requesting appointment:", error);
@@ -715,7 +757,165 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     }
   };
 
-  const resetBookingFlow = () => {
+  // Add function to display a more prominent notification when appointment is approved
+  const showAppointmentApprovalNotification = (status: any) => {
+    // Add a visible banner notification at the top of the chat
+    const appointmentNotificationBanner = document.createElement('div');
+    appointmentNotificationBanner.className = 'bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 rounded shadow-md';
+    appointmentNotificationBanner.innerHTML = `
+      <div class="flex items-center">
+        <svg class="h-6 w-6 text-green-500 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <div>
+          <p class="font-bold">Appointment Confirmed!</p>
+          <p>Your appointment with Dr. ${status.doctorName || 'your doctor'} on ${status.date || status.appointmentDate} at ${status.time || status.startTime} has been approved.</p>
+        </div>
+      </div>
+    `;
+    
+    // Find the chat container and insert at the top
+    const chatContainer = document.querySelector('.scroll-area');
+    if (chatContainer) {
+      chatContainer.prepend(appointmentNotificationBanner);
+      
+      // Scroll to show the notification
+      appointmentNotificationBanner.scrollIntoView({ behavior: 'smooth' });
+      
+      // Remove after 10 seconds
+      setTimeout(() => {
+        appointmentNotificationBanner.classList.add('opacity-0', 'transition-opacity', 'duration-500');
+        setTimeout(() => appointmentNotificationBanner.remove(), 500);
+      }, 10000);
+    }
+    
+    // Also store appointment in localStorage for quick access across the app
+    storeAppointment(status);
+  };
+
+  // Function to store the appointment in localStorage for access from other parts of the app
+  const storeAppointment = (appointmentData: any) => {
+    try {
+      // Validate required fields
+      if (!appointmentData.doctorName || !appointmentData.date || !appointmentData.time) {
+        console.error('Missing required appointment fields:', appointmentData);
+        return;
+      }
+
+      // Format the appointment data
+      const appointmentToStore = {
+        id: appointmentData.appointmentId || appointmentData._id || Date.now().toString(),
+        doctorId: appointmentData.doctorId || '',
+        doctorName: appointmentData.doctorName,
+        date: appointmentData.date,
+        time: appointmentData.time,
+        status: appointmentData.status || 'pending',
+        reason: appointmentData.reason || 'Medical Consultation',
+        createdAt: new Date().toISOString(),
+        patientId: currentUser?.uid
+      };
+
+      // Get existing appointments
+      const existingAppointments = JSON.parse(localStorage.getItem('mediaiAppointments') || '[]');
+      
+      // Remove any appointments with the same ID
+      const filteredAppointments = existingAppointments.filter(
+        (appt: any) => appt.id !== appointmentToStore.id
+      );
+      
+      // Add the new appointment
+      filteredAppointments.push(appointmentToStore);
+      
+      // Store back in localStorage
+      localStorage.setItem('mediaiAppointments', JSON.stringify(filteredAppointments));
+      
+      console.log('Appointment stored:', appointmentToStore);
+      
+      // Also store in Firestore if possible
+      if (currentUser && appointmentToStore.id) {
+        storeAppointmentInFirestore(appointmentToStore);
+      }
+    } catch (error) {
+      console.error('Error storing appointment:', error);
+    }
+  };
+
+  // Function to store appointment in Firestore for persistence
+  const storeAppointmentInFirestore = async (appointmentData: any) => {
+    if (!currentUser) return;
+    
+    try {
+      // Create a collection for user appointments
+      const appointmentRef = collection(db, 'users', currentUser.uid, 'appointments');
+      
+      await addDoc(appointmentRef, {
+        ...appointmentData,
+        createdAt: serverTimestamp()
+      });
+      
+      console.log('Appointment stored in Firestore');
+    } catch (error) {
+      console.error('Error storing appointment in Firestore:', error);
+    }
+  };
+
+  // Update checkAppointmentStatus function to use the notification
+  const checkAppointmentStatus = async (appointmentId: string) => {
+    if (!appointmentId) return;
+    
+    try {
+      const status = await AppointmentService.checkAppointmentStatus(appointmentId);
+      console.log("Appointment status check:", status);
+      
+      if (status && status.status === 'approved') {
+        // Check if this is the first time we're seeing this approval
+        const appointmentKey = `appointment_approved_${appointmentId}`;
+        const alreadyNotified = sessionStorage.getItem(appointmentKey);
+        
+        if (!alreadyNotified) {
+          // Show prominent notification
+          showAppointmentApprovalNotification(status);
+          
+          // Store flag to avoid duplicate notifications
+          sessionStorage.setItem(appointmentKey, 'true');
+          
+          // Add confirmation message to chat
+          const confirmationMessage: Message = {
+            id: `appointment_approved_${appointmentId}`,
+            role: 'assistant',
+            content: `Good news! Dr. ${status.doctorName || 'The doctor'} has approved your appointment for ${status.date || status.appointmentDate} at ${status.time || status.startTime}. Please arrive 15 minutes early.`,
+            timestamp: new Date(),
+            suggestsBooking: false,
+            isAppointmentUpdate: true,
+            appointmentId: appointmentId
+          };
+          
+          // Check if this message already exists in the chat
+          const messageExists = messages.some(msg => msg.id === confirmationMessage.id);
+          if (!messageExists) {
+            setMessages(prev => [...prev, confirmationMessage]);
+            
+            // Also show a toast notification
+            toast({
+              title: "Appointment Approved!",
+              description: `Your appointment with Dr. ${status.doctorName || 'The doctor'} has been approved.`,
+              variant: "default"
+            });
+            
+            // Add the message to the current consultation in Firestore
+            if (currentConsultation) {
+              await addMessageToConsultation(currentConsultation, confirmationMessage);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error checking appointment status:", error);
+    }
+  };
+
+  // Modify the resetBookingFlow function to save booking messages
+  const resetBookingFlow = (appointmentId?: string) => {
     setIsBookingFlowActive(false);
     setBookingStep(0);
     setAvailableDoctors([]);
@@ -723,10 +923,51 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     setSelectedDoctor(null);
     setSelectedSlot(null);
     setIsLoading(false);
-    console.log("Booking flow reset.");
+    
+    // If we have an appointment ID, schedule status checks
+    if (appointmentId) {
+      // Check immediately once
+      checkAppointmentStatus(appointmentId);
+      
+      // Then set an interval to check every 30 seconds for 5 minutes
+      const statusCheckInterval = setInterval(() => {
+        checkAppointmentStatus(appointmentId);
+      }, 30000); // Check every 30 seconds
+      
+      // Clear the interval after 5 minutes
+      setTimeout(() => {
+        clearInterval(statusCheckInterval);
+      }, 300000); // 5 minutes
+    }
+    
+    console.log("Booking flow reset. Will monitor appointment status:", appointmentId);
   };
-  
-  // --- End Booking Flow Logic ---
+
+  // Function to remove duplicate messages
+  const removeDuplicateMessages = (messages: Message[]): Message[] => {
+    const uniqueIds = new Set<string>();
+    return messages.filter(msg => {
+      // For messages with IDs, check if we've seen this ID before
+      if (uniqueIds.has(msg.id)) {
+        return false; // Skip duplicate
+      }
+      
+      uniqueIds.add(msg.id);
+      return true; // Keep unique message
+    });
+  };
+
+  // Function to check for pending appointments in message history
+  const checkForPendingAppointments = (messages: Message[]) => {
+    // Look for appointment request messages
+    for (const msg of messages) {
+      // If message contains appointmentId and is about a pending appointment
+      if (msg.appointmentId && msg.content.includes('appointment request sent')) {
+        // Resume status checking for this appointment
+        checkAppointmentStatus(msg.appointmentId);
+      }
+    }
+  };
 
   return (
     <Card className="w-full">
@@ -869,7 +1110,12 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
         {/* Cancel Booking Button */} 
         {isBookingFlowActive && (
           <div className="flex justify-center mb-2">
-            <Button variant="destructive" size="sm" onClick={resetBookingFlow} disabled={isLoading}>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={() => resetBookingFlow()} 
+              disabled={isLoading}
+            >
               Cancel Booking Process
             </Button>
           </div>

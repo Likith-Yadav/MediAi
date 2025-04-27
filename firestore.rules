@@ -3,28 +3,64 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
-    match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2025, 4, 11);
+    // Helper function to check if all required consultation fields are present
+    function isValidConsultation() {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+        'userId',
+        'chatId',
+        'title',
+        'date',
+        'lastUpdated',
+        'status',
+        'messages'
+      ]) &&
+      data.userId is string &&
+      data.chatId is string &&
+      data.title is string &&
+      data.status in ['new', 'active', 'completed'] &&
+      data.messages is list;
     }
 
     // Allow users to read and write their own profile
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    
-    // Allow users to read and write their own consultations
+
+    // Allow users to manage their own consultations with validation
     match /consultations/{consultationId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      // Create: User must be authenticated and consultation must be valid
+      allow create: if request.auth != null &&
+                   request.resource.data.userId == request.auth.uid &&
+                   isValidConsultation();
+
+      // Read: User can only read their own consultations
+      allow read: if request.auth != null &&
+                 resource.data.userId == request.auth.uid;
+
+      // Update: User can only update their own consultations and cannot change userId
+      allow update: if request.auth != null &&
+                   resource.data.userId == request.auth.uid &&
+                   request.resource.data.userId == resource.data.userId;
+
+      // Delete: User can only delete their own consultations
+      allow delete: if request.auth != null &&
+                   resource.data.userId == request.auth.uid;
+    }
+
+    // Allow users to read and write only their own symptom logs
+    match /symptomLogs/{logId} {
+      // Create: User must be authenticated and provide their own userId
+      allow create: if request.auth != null &&
+                     request.resource.data.userId == request.auth.uid &&
+                     request.resource.data.keys().hasAll(['userId', 'timestamp', 'symptom']); // Basic field check
+
+      // Read: User can only read their own symptom logs
+      allow read: if request.auth != null &&
+                 resource.data.userId == request.auth.uid;
+
+      // Update/Delete: Disallow for simplicity, logs are typically append-only
+      allow update, delete: if false;
     }
   }
 }

@@ -32,7 +32,7 @@ export const AuthContext = createContext<AuthContextProps>({
   logout: async () => {},
   signUp: async () => {},
   updateProfile: async () => {},
-  updateEmail: async () => {},
+  updateEmail: async () => { return { status: 'initial', message: 'Initial state' }; },
   updatePassword: async () => {},
 });
 
@@ -189,6 +189,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const logout = async () => {
+    // Clear local storage related to appointments/consultations
+    try {
+      localStorage.removeItem('mediaiAppointments');
+      // Remove other potential keys found in appointments.tsx loadAppointments
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('appointment') || key.includes('doctor') || key.includes('booking')) {
+          localStorage.removeItem(key);
+        }
+      });
+      // Clear relevant session storage keys
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('appointment_approved_')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+      console.log("Cleared local/session storage for appointments.");
+    } catch (error) {
+      console.error("Error clearing local/session storage during logout:", error);
+    }
+    
+    // Sign out from Firebase
     await signOut(auth);
   };
 
@@ -213,10 +234,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Sign out the user after sending verification email
     await signOut(auth);
     
-    return {
-      status: 'verification_needed',
-      message: 'Please check your email for verification link before logging in.'
-    };
+    // Log message instead of returning it, to match Promise<void> type
+    console.log('Verification email sent. Please check your email before logging in.');
   };
 
   // Remove this line as it's causing the error
