@@ -524,12 +524,16 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       // TODO: Potentially extract specialty from previous AI message?
       const doctors = await AppointmentService.fetchDoctors();
       setAvailableDoctors(doctors);
-      // Replace loading message with doctor list (implementation detail for later)
-      setMessages(prev => prev.map(msg => 
-        msg.id === bookingStartMessage.id 
-          ? { ...msg, content: "Please select a doctor:", isLoading: false } 
-          : msg
-      ));
+      // Instead of updating the previous message, add a new message for doctor selection
+      const doctorSelectMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Please select a doctor:',
+        timestamp: new Date(),
+        isLoading: false,
+        suggestsBooking: false
+      };
+      setMessages(prev => [...prev, doctorSelectMessage]);
     } catch (error) {
       console.error("Error fetching doctors:", error);
       toast({ title: "Error fetching doctors", variant: "destructive" });
@@ -563,6 +567,21 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     setBookingStep(2); // Move to slot selection
     console.log("Doctor selected:", doctor);
 
+    // --- Store selected doctor in consultation document ---
+    if (currentConsultation) {
+      try {
+        const consultationRef = doc(db, 'consultations', currentConsultation);
+        await updateDoc(consultationRef, {
+          doctorId: doctor._id || doctor.id || '',
+          doctorName: doctor.name || (doctor.firstName ? doctor.firstName + ' ' + doctor.lastName : 'Unnamed Doctor'),
+          selectedDoctor: doctor, // Optionally store the full doctor object
+          lastUpdated: serverTimestamp(),
+        });
+      } catch (err) {
+        console.error('Failed to update consultation with doctor info:', err);
+      }
+    }
+
     // Add placeholder message
     const loadingSlotsMessage: Message = {
       id: Date.now().toString(),
@@ -581,9 +600,48 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       
       console.log("Using doctor ID for API call:", doctorId);
       
-      const slots = await AppointmentService.fetchAvailability(doctorId);
+      let slots = await AppointmentService.fetchAvailability(doctorId);
+      let start = null;
+      let end = null;
+      let slotDate = '';
+      // Try to extract from slots
+      if (slots.length === 2 && slots[0].startTime && slots[1].endTime) {
+        start = parseInt(slots[0].startTime);
+        end = parseInt(slots[1].endTime);
+        slotDate = slots[0].date || slots[1].date || '';
+      } else if (slots.length === 1 && slots[0].startTime && slots[0].endTime) {
+        start = parseInt(slots[0].startTime);
+        end = parseInt(slots[0].endTime);
+        slotDate = slots[0].date || '';
+      }
+      // Fallback to doctor object if needed
+      if ((start === null || end === null) && (doctor.startTime && doctor.endTime)) {
+        start = parseInt(doctor.startTime);
+        end = parseInt(doctor.endTime);
+        slotDate = doctor.date || '';
+      }
+      if ((start === null || end === null) && (doctor.shiftStart && doctor.shiftEnd)) {
+        start = parseInt(doctor.shiftStart);
+        end = parseInt(doctor.shiftEnd);
+        slotDate = doctor.date || '';
+      }
+      // If we have start and end, generate 2-hour intervals
+      if (start !== null && end !== null && end > start) {
+        const intervals = [];
+        for (let t = start; t < end; t += 2) {
+          const slotStart = t;
+          const slotEnd = Math.min(t + 2, end);
+          intervals.push({
+            date: slotDate,
+            startTime: slotStart.toString().padStart(2, '0') + ':00',
+            endTime: slotEnd.toString().padStart(2, '0') + ':00',
+            displayText: `${slotStart.toString().padStart(2, '0')}:00 - ${slotEnd.toString().padStart(2, '0')}:00`,
+          });
+        }
+        slots = intervals;
+      }
       setAvailableSlots(slots);
-       setMessages(prev => prev.map(msg => 
+      setMessages(prev => prev.map(msg => 
         msg.id === loadingSlotsMessage.id 
           ? { ...msg, content: "Please select an available time slot:", isLoading: false } 
           : msg
@@ -604,6 +662,26 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     }
   };
 
+  // Move extractSymptoms outside of handleSelectSlot
+  const extractSymptoms = (messages: Message[]): string => {
+    // Find the last few user messages to extract symptoms
+    const userMessages = messages
+      .filter(msg => msg.role === 'user')
+      .slice(-3); // Get last 3 user messages
+
+    if (userMessages.length === 0) {
+      return "General consultation";
+    }
+
+    // Combine the content of user messages, with a maximum length
+    const combinedSymptoms = userMessages
+      .map(msg => msg.content)
+      .join("; ")
+      .substring(0, 100); // Limit to 100 characters
+
+    return combinedSymptoms || "General consultation";
+  };
+
   const handleSelectSlot = async (slot: any) => {
     // Log the full slot object to understand its structure
     console.log("SELECTED SLOT FULL OBJECT:", slot);
@@ -612,6 +690,21 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     setIsLoading(true);
     setBookingStep(3); // Move to confirmation
     console.log("Slot selected:", slot);
+
+    // --- Store selected slot in consultation document ---
+    if (currentConsultation) {
+      try {
+        const consultationRef = doc(db, 'consultations', currentConsultation);
+        await updateDoc(consultationRef, {
+          appointmentDate: slot.date || slot.appointmentDate || '',
+          appointmentTime: slot.time || slot.startTime || '',
+          selectedSlot: slot, // Optionally store the full slot object
+          lastUpdated: serverTimestamp(),
+        });
+      } catch (err) {
+        console.error('Failed to update consultation with slot info:', err);
+      }
+    }
 
     // Add placeholder message
     const requestingMessage: Message = {
@@ -639,28 +732,8 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       const appointmentDate = slot.date || slot.appointmentDate;
       const appointmentTime = slot.time || slot.startTime;
       
-      // Get symptoms from previous messages (last user message or a few messages combined)
-      const extractSymptoms = (): string => {
-        // Find the last few user messages to extract symptoms
-        const userMessages = messages
-          .filter(msg => msg.role === 'user')
-          .slice(-3); // Get last 3 user messages
-        
-        if (userMessages.length === 0) {
-          return "General consultation";
-        }
-        
-        // Combine the content of user messages, with a maximum length
-        const combinedSymptoms = userMessages
-          .map(msg => msg.content)
-          .join("; ")
-          .substring(0, 100); // Limit to 100 characters
-        
-        return combinedSymptoms || "General consultation";
-      };
-      
       // Extract symptoms for the reason field
-      const symptoms = extractSymptoms();
+      const symptoms = extractSymptoms(messages);
       
       // Prepare the appointment data for the API
       const appointmentData = {
@@ -797,18 +870,20 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   const storeAppointment = (appointmentData: any) => {
     try {
       // Validate required fields
-      if (!appointmentData.doctorName || !appointmentData.date || !appointmentData.time) {
+      const doctorName = appointmentData.doctorName || appointmentData.doctor || 'Unknown Doctor';
+      const date = appointmentData.date || appointmentData.appointmentDate || '';
+      const time = appointmentData.time || appointmentData.startTime || '';
+      if (!doctorName || !date || !time) {
         console.error('Missing required appointment fields:', appointmentData);
         return;
       }
-
       // Format the appointment data
       const appointmentToStore = {
         id: appointmentData.appointmentId || appointmentData._id || Date.now().toString(),
         doctorId: appointmentData.doctorId || '',
-        doctorName: appointmentData.doctorName,
-        date: appointmentData.date,
-        time: appointmentData.time,
+        doctorName,
+        date,
+        time,
         status: appointmentData.status || 'pending',
         reason: appointmentData.reason || 'Medical Consultation',
         createdAt: new Date().toISOString(),
@@ -1041,49 +1116,51 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                     )}
 
                     {/* Example for showing doctors (bookingStep 1) */}
-                    {msg.role === 'assistant' && bookingStep === 1 && availableDoctors.length > 0 && (
+                    {msg.role === 'assistant' && msg.content === 'Please select a doctor:' && bookingStep === 1 && availableDoctors.length > 0 && (
                        <div className="mt-2 space-y-1">
-                         {availableDoctors.map(doc => (
-                           <Button 
-                             key={doc._id || doc.id} 
-                             variant="outline" 
-                             size="sm" 
-                             className="w-full justify-start bg-white hover:bg-slate-50" 
-                             onClick={() => handleSelectDoctor(doc)} 
-                             disabled={isLoading}
-                           >
-                             {doc.name || doc.firstName + ' ' + doc.lastName || 'Unnamed Doctor'} 
-                             {doc.specialization && ` (${doc.specialization})`}
-                             {doc.specialty && ` (${doc.specialty})`}
-                           </Button>
-                         ))}
+                         {selectedDoctor 
+                           ? (<div className="font-semibold text-primary">{selectedDoctor.name || (selectedDoctor.firstName ? selectedDoctor.firstName + ' ' + selectedDoctor.lastName : 'Unnamed Doctor')}</div>)
+                           : (availableDoctors.map(doc => (
+                               <Button 
+                                 key={doc._id || doc.id} 
+                                 variant="outline" 
+                                 size="sm" 
+                                 className="w-full justify-start bg-white hover:bg-slate-50" 
+                                 onClick={() => handleSelectDoctor(doc)} 
+                                 disabled={isLoading}
+                               >
+                                 {doc.name || (doc.firstName ? doc.firstName + ' ' + doc.lastName : 'Unnamed Doctor')} 
+                                 {doc.specialization && ` (${doc.specialization})`}
+                                 {doc.specialty && ` (${doc.specialty})`}
+                               </Button>
+                             )))}
                        </div>
                     )}
 
                     {/* Example for showing slots (bookingStep 2) */}
-                     {msg.role === 'assistant' && bookingStep === 2 && availableSlots.length > 0 && (
+                    {msg.role === 'assistant' && msg.content === 'Please select an available time slot:' && bookingStep === 2 && availableSlots.length > 0 && (
                        <div className="mt-2 grid grid-cols-3 gap-1">
-                         {availableSlots.map((slot, index) => {
-                           // Handle different data formats that might come from API
-                           const displayDate = slot.date || slot.appointmentDate || '';
-                           const displayTime = slot.time || slot.startTime || '';
-                           
-                           return (
-                             <Button 
-                               key={index} 
-                               variant="outline" 
-                               size="sm" 
-                               className="bg-white hover:bg-slate-50" 
-                               onClick={() => handleSelectSlot(slot)} 
-                               disabled={isLoading}
-                             >
-                               {displayDate && displayTime 
-                                 ? `${displayDate} @ ${displayTime}`
-                                 : (slot.displayText || JSON.stringify(slot))
-                               }
-                             </Button>
-                           );
-                         })}
+                         {selectedSlot 
+                           ? (<div className="font-semibold text-primary col-span-3">{(selectedSlot.date || selectedSlot.appointmentDate) + ' @ ' + (selectedSlot.time || selectedSlot.startTime)}</div>)
+                           : (availableSlots.map((slot, index) => {
+                               const displayDate = slot.date || slot.appointmentDate || '';
+                               const displayTime = slot.time || slot.startTime || '';
+                               return (
+                                 <Button 
+                                   key={index} 
+                                   variant="outline" 
+                                   size="sm" 
+                                   className="bg-white hover:bg-slate-50" 
+                                   onClick={() => handleSelectSlot(slot)} 
+                                   disabled={isLoading}
+                                 >
+                                   {displayDate && displayTime 
+                                     ? `${displayDate} @ ${displayTime}`
+                                     : (slot.displayText || JSON.stringify(slot))
+                                   }
+                                 </Button>
+                               );
+                             }))}
                          {availableSlots.length === 0 && 
                            <p className="text-xs text-muted-foreground col-span-3">No available slots found.</p>
                          }
