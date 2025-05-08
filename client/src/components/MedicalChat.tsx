@@ -601,38 +601,16 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       console.log("Using doctor ID for API call:", doctorId);
       
       let slots = await AppointmentService.fetchAvailability(doctorId);
-      let start = null;
-      let end = null;
-      let slotDate = '';
-      // Try to extract from slots
+      // If slots contain only a start and end time, generate 2-hour intervals
       if (slots.length === 2 && slots[0].startTime && slots[1].endTime) {
-        start = parseInt(slots[0].startTime);
-        end = parseInt(slots[1].endTime);
-        slotDate = slots[0].date || slots[1].date || '';
-      } else if (slots.length === 1 && slots[0].startTime && slots[0].endTime) {
-        start = parseInt(slots[0].startTime);
-        end = parseInt(slots[0].endTime);
-        slotDate = slots[0].date || '';
-      }
-      // Fallback to doctor object if needed
-      if ((start === null || end === null) && (doctor.startTime && doctor.endTime)) {
-        start = parseInt(doctor.startTime);
-        end = parseInt(doctor.endTime);
-        slotDate = doctor.date || '';
-      }
-      if ((start === null || end === null) && (doctor.shiftStart && doctor.shiftEnd)) {
-        start = parseInt(doctor.shiftStart);
-        end = parseInt(doctor.shiftEnd);
-        slotDate = doctor.date || '';
-      }
-      // If we have start and end, generate 2-hour intervals
-      if (start !== null && end !== null && end > start) {
+        const start = parseInt(slots[0].startTime);
+        const end = parseInt(slots[1].endTime);
         const intervals = [];
         for (let t = start; t < end; t += 2) {
           const slotStart = t;
           const slotEnd = Math.min(t + 2, end);
           intervals.push({
-            date: slotDate,
+            date: slots[0].date || slots[1].date || '',
             startTime: slotStart.toString().padStart(2, '0') + ':00',
             endTime: slotEnd.toString().padStart(2, '0') + ':00',
             displayText: `${slotStart.toString().padStart(2, '0')}:00 - ${slotEnd.toString().padStart(2, '0')}:00`,
@@ -958,7 +936,7 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
           const confirmationMessage: Message = {
             id: `appointment_approved_${appointmentId}`,
             role: 'assistant',
-            content: `Good news! Dr. ${status.doctorName || 'The doctor'} has approved your appointment for ${status.date || status.appointmentDate} at ${status.time || status.startTime}. Please arrive 15 minutes early.`,
+            content: 'Your appointment has been approved! You can check your appointments at My Appointments.',
             timestamp: new Date(),
             suggestsBooking: false,
             isAppointmentUpdate: true,
