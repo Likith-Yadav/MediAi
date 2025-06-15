@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Mic, PlusCircle, Upload, FileText, Image, Send, Save, CalendarPlus } from "lucide-react";
+import { Loader2, Mic, PlusCircle, Upload, FileText, Image, Send, Save, CalendarPlus, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Message, Consultation } from "@/lib/types";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,6 +25,13 @@ import {
 import { medicalChatService, medicalAnalysisService } from "@/lib/aiService";
 import * as AppointmentService from '@/lib/appointmentService';
 import AppointmentLoginModal from './AppointmentLoginModal';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface MedicalChatProps {
   selectedConsultation?: Consultation | null;
@@ -50,6 +57,7 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   const [selectedSlot, setSelectedSlot] = useState<any>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [appointmentUser, setAppointmentUser] = useState<any>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState('en-US');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -62,8 +70,15 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   // Update messages when selectedConsultation changes
   useEffect(() => {
     if (selectedConsultation?.id && selectedConsultation?.messages) {
-      // Process messages to remove duplicates
-      const uniqueMessages = removeDuplicateMessages(selectedConsultation.messages);
+      // Process messages to remove duplicates and initialize showEnglish for AI messages
+      const processedMessages = selectedConsultation.messages.map(msg => {
+        if (msg.role === 'assistant' && msg.englishContent && msg.translatedContent) {
+          return { ...msg, showEnglish: true }; // Default to showing English
+        }
+        return msg;
+      });
+
+      const uniqueMessages = removeDuplicateMessages(processedMessages);
       setMessages(uniqueMessages);
       setCurrentConsultation(selectedConsultation.id);
       
@@ -91,12 +106,29 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       }
     );
 
+    // Set initial language
+    if (speechService.current) {
+      speechService.current.setLanguage(selectedLanguage);
+    }
+
     return () => {
       if (speechService.current) {
         speechService.current.stopRecording();
       }
     };
   }, []);
+
+  // Handle language change
+  const handleLanguageChange = (languageCode: string) => {
+    setSelectedLanguage(languageCode);
+    if (speechService.current) {
+      speechService.current.setLanguage(languageCode);
+      toast({
+        title: "Language Changed",
+        description: `Speech recognition set to ${SpeechService.SUPPORTED_LANGUAGES.find(lang => lang.code === languageCode)?.name || languageCode}`,
+      });
+    }
+  };
 
   // Handle voice recording
   const handleVoiceRecord = () => {
@@ -367,27 +399,52 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       await addMessageToConsultation(consultationId, userMessage);
 
       // Get AI response
-      const response = await medicalChatService.sendMessage(text);
+      const response = await medicalChatService.sendMessage(text, selectedLanguage);
       
-      // Clean and format the response
-      let cleanContent = response.content
+      let englishContent = response.content.trim();
+      let translatedContent: string | undefined = undefined;
+      let finalContent = englishContent;
+
+      // If a non-English language was selected, parse the bilingual response
+      if (selectedLanguage !== 'en-US' && englishContent.includes("| Translated:")) {
+        const parts = englishContent.split("| Translated:");
+        if (parts.length === 2) {
+          englishContent = parts[0].replace("English:", "").trim();
+          translatedContent = parts[1].trim();
+          finalContent = englishContent; // Default to English
+        }
+      }
+      
+      // Clean and format the content (applies to both English and translated)
+      finalContent = finalContent
         .replace(/\*\*/g, '') // Remove bold markers
         .replace(/\d+\. /g, '') // Remove numbered lists
         .replace(/\n\n/g, '\n') // Reduce multiple newlines
         .trim();
-
-      // Check if AI suggests booking
-      const suggestsBookingKeywords = ['consult', 'see a doctor', 'specialist', 'appointment', 'physician'];
-      const lowerCaseContent = cleanContent.toLowerCase();
-      const suggestsBooking = suggestsBookingKeywords.some(keyword => lowerCaseContent.includes(keyword));
       
-      console.log("[Text Response] AI Content:", cleanContent, "| Suggests Booking:", suggestsBooking);
+      if (translatedContent) {
+        translatedContent = translatedContent
+          .replace(/\*\*/g, '')
+          .replace(/\d+\. /g, '')
+          .replace(/\n\n/g, '\n')
+          .trim();
+      }
+
+      // Check if AI suggests booking (using English content for keyword detection)
+      const suggestsBookingKeywords = ['consult', 'see a doctor', 'specialist', 'appointment', 'physician'];
+      const lowerCaseEnglishContent = englishContent.toLowerCase();
+      const suggestsBooking = suggestsBookingKeywords.some(keyword => lowerCaseEnglishContent.includes(keyword));
+
+      console.log("[Text Response] AI Content (English):", englishContent, "| Translated:", translatedContent, "| Suggests Booking:", suggestsBooking);
 
       const aiMessage: Message = {
         ...response,
-        content: cleanContent,
+        content: finalContent,
         timestamp: new Date(),
-        suggestsBooking: suggestsBooking
+        suggestsBooking: suggestsBooking,
+        englishContent: englishContent,
+        translatedContent: translatedContent,
+        showEnglish: true, // Initially show English content
       };
 
       // Add AI message to consultation
@@ -1022,6 +1079,17 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     }
   };
 
+  // Function to toggle language for a specific message
+  const handleToggleLanguage = (messageId: string) => {
+    setMessages(prevMessages =>
+      prevMessages.map(msg =>
+        msg.id === messageId
+          ? { ...msg, content: msg.showEnglish ? msg.translatedContent || msg.content : msg.englishContent || msg.content, showEnglish: !msg.showEnglish }
+          : msg
+      )
+    );
+  };
+
   return (
     <Card className="w-full">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -1077,6 +1145,22 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                       </p>
                     ) : (
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    )}
+
+                    {/* Language Toggle Button */}
+                    {msg.role === 'assistant' && msg.englishContent && msg.translatedContent && selectedLanguage !== 'en-US' && ( 
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="mt-2 flex items-center gap-1 bg-white hover:bg-slate-50"
+                        onClick={() => handleToggleLanguage(msg.id)}
+                      >
+                        <Globe className="h-4 w-4 mr-1" />
+                        {msg.showEnglish ? 
+                          `Show in ${SpeechService.SUPPORTED_LANGUAGES.find(lang => lang.code === selectedLanguage)?.name || 'Translated'}` :
+                          'Show in English'
+                        }
+                      </Button>
                     )}
                     
                     {/* Render Booking Button if AI suggests it and flow isn't active */}
@@ -1242,6 +1326,25 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
               disabled={isLoading || isRecording}
             />
           </div>
+          
+          {/* Language Selector */}
+          <Select
+            value={selectedLanguage}
+            onValueChange={handleLanguageChange}
+            disabled={isLoading || isRecording}
+          >
+            <SelectTrigger className="w-[140px]">
+              <Globe className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Select language" />
+            </SelectTrigger>
+            <SelectContent>
+              {SpeechService.SUPPORTED_LANGUAGES.map((language) => (
+                <SelectItem key={language.code} value={language.code}>
+                  {language.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           
           {/* Voice Recording Button */}
           <Button

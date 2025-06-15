@@ -1,11 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Verify API key
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!apiKey) {
-  console.error('Gemini API key is not set in environment variables');
-  throw new Error('Gemini API key is required');
-}
+const apiKey = "AIzaSyBbZxOPOPGnQ3JUF-EuTwhNvBCMqacLGBE";
+// if (!apiKey) {
+//   console.error('Gemini API key is not set in environment variables');
+//   throw new Error('Gemini API key is required');
+// }
 
 console.log('API Key loaded:', apiKey);
 
@@ -25,15 +25,15 @@ export interface Message {
 }
 
 export const medicalChatService = {
-  async sendMessage(message: string): Promise<Message> {
+  async sendMessage(message: string, language: string = 'en-US'): Promise<Message> {
     try {
       console.log('Starting chat with message:', message);
 
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-      }, { apiVersion: "v1" });
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash",
+      }, { apiVersion: "v1beta" });
 
-      const prompt = `You are an AI medical assistant. Your role is to:
+      let prompt = `You are an AI medical assistant. Your role is to:
 1. Ask relevant questions about symptoms
 2. Provide preliminary analysis
 3. Recommend appropriate medications and treatments
@@ -44,6 +44,12 @@ User message: ${message}
 
 Please respond in a professional, caring manner.`;
 
+      if (language && language !== 'en-US') {
+        prompt += ` Provide your response first in English, followed by a translation into the selected language: ${language}. Use the format: "English: [English text] | Translated: [Translated text]".`;
+      } else {
+        prompt += ` Please respond in English.`;
+      }
+      
       console.log('Sending message to Gemini...');
       const result = await model.generateContent(prompt);
       console.log('Received response from Gemini:', result);
@@ -122,8 +128,8 @@ Important Notes:
 Please be thorough and precise while explaining in patient-friendly terms.`;
 
       const visionModel = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-      }, { apiVersion: "v1" });
+        model: "gemini-2.0-flash",
+      }, { apiVersion: "v1beta" });
       
       const result = await visionModel.generateContent([prompt, imageData]);
       const response = await result.response;
