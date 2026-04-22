@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Mic, PlusCircle, Upload, FileText, Image, Send, Save, CalendarPlus } from "lucide-react";
+import { Loader2, Mic, PlusCircle, Upload, FileText, Image, Send, Save, CalendarPlus, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Message, Consultation } from "@/lib/types";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,6 +25,13 @@ import {
 import { medicalChatService, medicalAnalysisService } from "@/lib/aiService";
 import * as AppointmentService from '@/lib/appointmentService';
 import AppointmentLoginModal from './AppointmentLoginModal';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface MedicalChatProps {
   selectedConsultation?: Consultation | null;
@@ -50,6 +57,7 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   const [selectedSlot, setSelectedSlot] = useState<any>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [appointmentUser, setAppointmentUser] = useState<any>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState('en-US');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -62,8 +70,15 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   // Update messages when selectedConsultation changes
   useEffect(() => {
     if (selectedConsultation?.id && selectedConsultation?.messages) {
-      // Process messages to remove duplicates
-      const uniqueMessages = removeDuplicateMessages(selectedConsultation.messages);
+      // Process messages to remove duplicates and initialize showEnglish for AI messages
+      const processedMessages = selectedConsultation.messages.map(msg => {
+        if (msg.role === 'assistant' && msg.englishContent && msg.translatedContent) {
+          return { ...msg, showEnglish: true }; // Default to showing English
+        }
+        return msg;
+      });
+
+      const uniqueMessages = removeDuplicateMessages(processedMessages);
       setMessages(uniqueMessages);
       setCurrentConsultation(selectedConsultation.id);
       
@@ -91,12 +106,29 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       }
     );
 
+    // Set initial language
+    if (speechService.current) {
+      speechService.current.setLanguage(selectedLanguage);
+    }
+
     return () => {
       if (speechService.current) {
         speechService.current.stopRecording();
       }
     };
   }, []);
+
+  // Handle language change
+  const handleLanguageChange = (languageCode: string) => {
+    setSelectedLanguage(languageCode);
+    if (speechService.current) {
+      speechService.current.setLanguage(languageCode);
+      toast({
+        title: "Language Changed",
+        description: `Speech recognition set to ${SpeechService.SUPPORTED_LANGUAGES.find(lang => lang.code === languageCode)?.name || languageCode}`,
+      });
+    }
+  };
 
   // Handle voice recording
   const handleVoiceRecord = () => {
@@ -394,13 +426,21 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
         .replace(/\d+\. /g, '') // Remove numbered lists
         .replace(/\n\n/g, '\n') // Reduce multiple newlines
         .trim();
-
-      // Check if AI suggests booking
-      const suggestsBookingKeywords = ['consult', 'see a doctor', 'specialist', 'appointment', 'physician'];
-      const lowerCaseContent = cleanContent.toLowerCase();
-      const suggestsBooking = suggestsBookingKeywords.some(keyword => lowerCaseContent.includes(keyword));
       
-      console.log("[Text Response] AI Content:", cleanContent, "| Suggests Booking:", suggestsBooking);
+      if (translatedContent) {
+        translatedContent = translatedContent
+          .replace(/\*\*/g, '')
+          .replace(/\d+\. /g, '')
+          .replace(/\n\n/g, '\n')
+          .trim();
+      }
+
+      // Check if AI suggests booking (using English content for keyword detection)
+      const suggestsBookingKeywords = ['consult', 'see a doctor', 'specialist', 'appointment', 'physician'];
+      const lowerCaseEnglishContent = englishContent.toLowerCase();
+      const suggestsBooking = suggestsBookingKeywords.some(keyword => lowerCaseEnglishContent.includes(keyword));
+
+      console.log("[Text Response] AI Content (English):", englishContent, "| Translated:", translatedContent, "| Suggests Booking:", suggestsBooking);
 
       const aiMessage: Message = {
         ...response,
@@ -544,12 +584,16 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       // TODO: Potentially extract specialty from previous AI message?
       const doctors = await AppointmentService.fetchDoctors();
       setAvailableDoctors(doctors);
-      // Replace loading message with doctor list (implementation detail for later)
-      setMessages(prev => prev.map(msg => 
-        msg.id === bookingStartMessage.id 
-          ? { ...msg, content: "Please select a doctor:", isLoading: false } 
-          : msg
-      ));
+      // Instead of updating the previous message, add a new message for doctor selection
+      const doctorSelectMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Please select a doctor:',
+        timestamp: new Date(),
+        isLoading: false,
+        suggestsBooking: false
+      };
+      setMessages(prev => [...prev, doctorSelectMessage]);
     } catch (error) {
       console.error("Error fetching doctors:", error);
       toast({ title: "Error fetching doctors", variant: "destructive" });
@@ -597,6 +641,21 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     setBookingStep(2); // Move to slot selection
     console.log("Doctor selected:", doctor);
 
+    // --- Store selected doctor in consultation document ---
+    if (currentConsultation) {
+      try {
+        const consultationRef = doc(db, 'consultations', currentConsultation);
+        await updateDoc(consultationRef, {
+          doctorId: doctor._id || doctor.id || '',
+          doctorName: doctor.name || (doctor.firstName ? doctor.firstName + ' ' + doctor.lastName : 'Unnamed Doctor'),
+          selectedDoctor: doctor, // Optionally store the full doctor object
+          lastUpdated: serverTimestamp(),
+        });
+      } catch (err) {
+        console.error('Failed to update consultation with doctor info:', err);
+      }
+    }
+
     // Add placeholder message
     const loadingSlotsMessage: Message = {
       id: Date.now().toString(),
@@ -615,9 +674,26 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       
       console.log("Using doctor ID for API call:", doctorId);
       
-      const slots = await AppointmentService.fetchAvailability(doctorId);
+      let slots = await AppointmentService.fetchAvailability(doctorId);
+      // If slots contain only a start and end time, generate 2-hour intervals
+      if (slots.length === 2 && slots[0].startTime && slots[1].endTime) {
+        const start = parseInt(slots[0].startTime);
+        const end = parseInt(slots[1].endTime);
+        const intervals = [];
+        for (let t = start; t < end; t += 2) {
+          const slotStart = t;
+          const slotEnd = Math.min(t + 2, end);
+          intervals.push({
+            date: slots[0].date || slots[1].date || '',
+            startTime: slotStart.toString().padStart(2, '0') + ':00',
+            endTime: slotEnd.toString().padStart(2, '0') + ':00',
+            displayText: `${slotStart.toString().padStart(2, '0')}:00 - ${slotEnd.toString().padStart(2, '0')}:00`,
+          });
+        }
+        slots = intervals;
+      }
       setAvailableSlots(slots);
-       setMessages(prev => prev.map(msg => 
+      setMessages(prev => prev.map(msg => 
         msg.id === loadingSlotsMessage.id 
           ? { ...msg, content: "Please select an available time slot:", isLoading: false } 
           : msg
@@ -638,6 +714,26 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     }
   };
 
+  // Move extractSymptoms outside of handleSelectSlot
+  const extractSymptoms = (messages: Message[]): string => {
+    // Find the last few user messages to extract symptoms
+    const userMessages = messages
+      .filter(msg => msg.role === 'user')
+      .slice(-3); // Get last 3 user messages
+
+    if (userMessages.length === 0) {
+      return "General consultation";
+    }
+
+    // Combine the content of user messages, with a maximum length
+    const combinedSymptoms = userMessages
+      .map(msg => msg.content)
+      .join("; ")
+      .substring(0, 100); // Limit to 100 characters
+
+    return combinedSymptoms || "General consultation";
+  };
+
   const handleSelectSlot = async (slot: any) => {
     // Log the full slot object to understand its structure
     console.log("SELECTED SLOT FULL OBJECT:", slot);
@@ -646,6 +742,21 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     setIsLoading(true);
     setBookingStep(3); // Move to confirmation
     console.log("Slot selected:", slot);
+
+    // --- Store selected slot in consultation document ---
+    if (currentConsultation) {
+      try {
+        const consultationRef = doc(db, 'consultations', currentConsultation);
+        await updateDoc(consultationRef, {
+          appointmentDate: slot.date || slot.appointmentDate || '',
+          appointmentTime: slot.time || slot.startTime || '',
+          selectedSlot: slot, // Optionally store the full slot object
+          lastUpdated: serverTimestamp(),
+        });
+      } catch (err) {
+        console.error('Failed to update consultation with slot info:', err);
+      }
+    }
 
     // Add placeholder message
     const requestingMessage: Message = {
@@ -673,28 +784,8 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       const appointmentDate = slot.date || slot.appointmentDate;
       const appointmentTime = slot.time || slot.startTime;
       
-      // Get symptoms from previous messages (last user message or a few messages combined)
-      const extractSymptoms = (): string => {
-        // Find the last few user messages to extract symptoms
-        const userMessages = messages
-          .filter(msg => msg.role === 'user')
-          .slice(-3); // Get last 3 user messages
-        
-        if (userMessages.length === 0) {
-          return "General consultation";
-        }
-        
-        // Combine the content of user messages, with a maximum length
-        const combinedSymptoms = userMessages
-          .map(msg => msg.content)
-          .join("; ")
-          .substring(0, 100); // Limit to 100 characters
-        
-        return combinedSymptoms || "General consultation";
-      };
-      
       // Extract symptoms for the reason field
-      const symptoms = extractSymptoms();
+      const symptoms = extractSymptoms(messages);
       
       // Prepare the appointment data for the API
       const appointmentData = {
@@ -831,18 +922,20 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   const storeAppointment = (appointmentData: any) => {
     try {
       // Validate required fields
-      if (!appointmentData.doctorName || !appointmentData.date || !appointmentData.time) {
+      const doctorName = appointmentData.doctorName || appointmentData.doctor || 'Unknown Doctor';
+      const date = appointmentData.date || appointmentData.appointmentDate || '';
+      const time = appointmentData.time || appointmentData.startTime || '';
+      if (!doctorName || !date || !time) {
         console.error('Missing required appointment fields:', appointmentData);
         return;
       }
-
       // Format the appointment data
       const appointmentToStore = {
         id: appointmentData.appointmentId || appointmentData._id || Date.now().toString(),
         doctorId: appointmentData.doctorId || '',
-        doctorName: appointmentData.doctorName,
-        date: appointmentData.date,
-        time: appointmentData.time,
+        doctorName,
+        date,
+        time,
         status: appointmentData.status || 'pending',
         reason: appointmentData.reason || 'Medical Consultation',
         createdAt: new Date().toISOString(),
@@ -917,7 +1010,7 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
           const confirmationMessage: Message = {
             id: `appointment_approved_${appointmentId}`,
             role: 'assistant',
-            content: `Good news! Dr. ${status.doctorName || 'The doctor'} has approved your appointment for ${status.date || status.appointmentDate} at ${status.time || status.startTime}. Please arrive 15 minutes early.`,
+            content: 'Your appointment has been approved! You can check your appointments at My Appointments.',
             timestamp: new Date(),
             suggestsBooking: false,
             isAppointmentUpdate: true,
@@ -1003,6 +1096,17 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
     }
   };
 
+  // Function to toggle language for a specific message
+  const handleToggleLanguage = (messageId: string) => {
+    setMessages(prevMessages =>
+      prevMessages.map(msg =>
+        msg.id === messageId
+          ? { ...msg, content: msg.showEnglish ? msg.translatedContent || msg.content : msg.englishContent || msg.content, showEnglish: !msg.showEnglish }
+          : msg
+      )
+    );
+  };
+
   return (
     <Card className="w-full">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -1059,6 +1163,22 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                     ) : (
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                     )}
+
+                    {/* Language Toggle Button */}
+                    {msg.role === 'assistant' && msg.englishContent && msg.translatedContent && selectedLanguage !== 'en-US' && ( 
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="mt-2 flex items-center gap-1 bg-white hover:bg-slate-50"
+                        onClick={() => handleToggleLanguage(msg.id)}
+                      >
+                        <Globe className="h-4 w-4 mr-1" />
+                        {msg.showEnglish ? 
+                          `Show in ${SpeechService.SUPPORTED_LANGUAGES.find(lang => lang.code === selectedLanguage)?.name || 'Translated'}` :
+                          'Show in English'
+                        }
+                      </Button>
+                    )}
                     
                     {/* Render Booking Button if AI suggests it and flow isn't active */}
                     {msg.role === 'assistant' && msg.suggestsBooking && !isBookingFlowActive && (
@@ -1080,20 +1200,22 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                      availableDoctors.length > 0 && 
                      msg.content.includes('Please select a doctor') && (
                        <div className="mt-2 space-y-1">
-                         {availableDoctors.map(doc => (
-                           <Button 
-                             key={doc._id || doc.id} 
-                             variant="outline" 
-                             size="sm" 
-                             className="w-full justify-start bg-white hover:bg-slate-50" 
-                             onClick={() => handleSelectDoctor(doc)} 
-                             disabled={isLoading}
-                           >
-                             {doc.name || doc.firstName + ' ' + doc.lastName || 'Unnamed Doctor'} 
-                             {doc.specialization && ` (${doc.specialization})`}
-                             {doc.specialty && ` (${doc.specialty})`}
-                           </Button>
-                         ))}
+                         {selectedDoctor 
+                           ? (<div className="font-semibold text-primary">{selectedDoctor.name || (selectedDoctor.firstName ? selectedDoctor.firstName + ' ' + selectedDoctor.lastName : 'Unnamed Doctor')}</div>)
+                           : (availableDoctors.map(doc => (
+                               <Button 
+                                 key={doc._id || doc.id} 
+                                 variant="outline" 
+                                 size="sm" 
+                                 className="w-full justify-start bg-white hover:bg-slate-50" 
+                                 onClick={() => handleSelectDoctor(doc)} 
+                                 disabled={isLoading}
+                               >
+                                 {doc.name || (doc.firstName ? doc.firstName + ' ' + doc.lastName : 'Unnamed Doctor')} 
+                                 {doc.specialization && ` (${doc.specialization})`}
+                                 {doc.specialty && ` (${doc.specialty})`}
+                               </Button>
+                             )))}
                        </div>
                     )}
 
@@ -1103,27 +1225,27 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                      availableSlots.length > 0 && 
                      (msg.content.includes('Please select an available time slot') || msg.content.includes('select a time slot')) && (
                        <div className="mt-2 grid grid-cols-3 gap-1">
-                         {availableSlots.map((slot, index) => {
-                           // Handle different data formats that might come from API
-                           const displayDate = slot.date || slot.appointmentDate || '';
-                           const displayTime = slot.time || slot.startTime || '';
-                           
-                           return (
-                             <Button 
-                               key={index} 
-                               variant="outline" 
-                               size="sm" 
-                               className="bg-white hover:bg-slate-50" 
-                               onClick={() => handleSelectSlot(slot)} 
-                               disabled={isLoading}
-                             >
-                               {displayDate && displayTime 
-                                 ? `${displayDate} @ ${displayTime}`
-                                 : (slot.displayText || JSON.stringify(slot))
-                               }
-                             </Button>
-                           );
-                         })}
+                         {selectedSlot 
+                           ? (<div className="font-semibold text-primary col-span-3">{(selectedSlot.date || selectedSlot.appointmentDate) + ' @ ' + (selectedSlot.time || selectedSlot.startTime)}</div>)
+                           : (availableSlots.map((slot, index) => {
+                               const displayDate = slot.date || slot.appointmentDate || '';
+                               const displayTime = slot.time || slot.startTime || '';
+                               return (
+                                 <Button 
+                                   key={index} 
+                                   variant="outline" 
+                                   size="sm" 
+                                   className="bg-white hover:bg-slate-50" 
+                                   onClick={() => handleSelectSlot(slot)} 
+                                   disabled={isLoading}
+                                 >
+                                   {displayDate && displayTime 
+                                     ? `${displayDate} @ ${displayTime}`
+                                     : (slot.displayText || JSON.stringify(slot))
+                                   }
+                                 </Button>
+                               );
+                             }))}
                          {availableSlots.length === 0 && 
                            <p className="text-xs text-muted-foreground col-span-3">No available slots found.</p>
                          }
@@ -1227,6 +1349,25 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
               disabled={isLoading || isRecording}
             />
           </div>
+          
+          {/* Language Selector */}
+          <Select
+            value={selectedLanguage}
+            onValueChange={handleLanguageChange}
+            disabled={isLoading || isRecording}
+          >
+            <SelectTrigger className="w-[140px]">
+              <Globe className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Select language" />
+            </SelectTrigger>
+            <SelectContent>
+              {SpeechService.SUPPORTED_LANGUAGES.map((language) => (
+                <SelectItem key={language.code} value={language.code}>
+                  {language.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           
           {/* Voice Recording Button */}
           <Button

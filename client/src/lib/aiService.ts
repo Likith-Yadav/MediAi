@@ -1,11 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Verify API key
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!apiKey) {
-  console.error('Gemini API key is not set in environment variables');
-  throw new Error('Gemini API key is required');
-}
+const apiKey = "AIzaSyBbZxOPOPGnQ3JUF-EuTwhNvBCMqacLGBE";
+// if (!apiKey) {
+//   console.error('Gemini API key is not set in environment variables');
+//   throw new Error('Gemini API key is required');
+// }
 
 console.log('API Key loaded:', apiKey);
 
@@ -51,7 +51,7 @@ export interface Message {
 }
 
 export const medicalChatService = {
-  async sendMessage(message: string): Promise<Message> {
+  async sendMessage(message: string, language: string = 'en-US'): Promise<Message> {
     try {
       console.log('Starting chat request');
 
@@ -63,7 +63,7 @@ export const medicalChatService = {
         },
       }, { apiVersion: "v1" });
 
-      const prompt = `You are an AI medical assistant. Your role is to:
+      let prompt = `You are an AI medical assistant. Your role is to:
 1. Ask relevant questions about symptoms
 2. Provide preliminary analysis
 3. Recommend appropriate medications and treatments
