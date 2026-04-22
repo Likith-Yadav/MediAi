@@ -398,25 +398,30 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
       // Add user message to consultation
       await addMessageToConsultation(consultationId, userMessage);
 
-      // Get AI response
-      const response = await medicalChatService.sendMessage(text, selectedLanguage);
-      
-      let englishContent = response.content.trim();
-      let translatedContent: string | undefined = undefined;
-      let finalContent = englishContent;
+      // Insert a placeholder message immediately, then stream content into it
+      const aiMessageId = (Date.now() + 1).toString();
+      const aiPlaceholder: Message = {
+        id: aiMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        isLoading: true,
+        suggestsBooking: false
+      };
+      setMessages(prev => [...prev, aiPlaceholder]);
 
-      // If a non-English language was selected, parse the bilingual response
-      if (selectedLanguage !== 'en-US' && englishContent.includes("| Translated:")) {
-        const parts = englishContent.split("| Translated:");
-        if (parts.length === 2) {
-          englishContent = parts[0].replace("English:", "").trim();
-          translatedContent = parts[1].trim();
-          finalContent = englishContent; // Default to English
-        }
-      }
+      const response = await medicalChatService.streamMessage(text, (partialText) => {
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === aiMessageId
+              ? { ...msg, content: partialText, isLoading: true }
+              : msg
+          )
+        );
+      });
       
-      // Clean and format the content (applies to both English and translated)
-      finalContent = finalContent
+      // Clean and format the response
+      const cleanContent = response.content
         .replace(/\*\*/g, '') // Remove bold markers
         .replace(/\d+\. /g, '') // Remove numbered lists
         .replace(/\n\n/g, '\n') // Reduce multiple newlines
@@ -439,18 +444,16 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
 
       const aiMessage: Message = {
         ...response,
-        content: finalContent,
+        id: aiMessageId,
+        content: cleanContent,
         timestamp: new Date(),
-        suggestsBooking: suggestsBooking,
-        englishContent: englishContent,
-        translatedContent: translatedContent,
-        showEnglish: true, // Initially show English content
+        isLoading: false,
+        suggestsBooking: suggestsBooking
       };
 
       // Add AI message to consultation
       await addMessageToConsultation(consultationId, aiMessage);
-      
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => prev.map(msg => msg.id === aiMessageId ? aiMessage : msg));
 
       // Update consultation status and any medical insights
       await updateDoc(doc(db, 'consultations', consultationId), {
@@ -467,7 +470,7 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
         description: `Failed to get response: ${error.message}`,
         variant: "destructive"
       });
-      setMessages(prev => prev.slice(0, -1));
+      setMessages(prev => prev.filter(msg => !msg.isLoading));
     } finally {
       setIsLoading(false);
     }
@@ -608,6 +611,20 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
   // Handle successful login
   const handleLoginSuccess = (userData: any) => {
     console.log("Login successful, user data:", userData);
+    
+    // Verify that login actually succeeded - check for token in various locations
+    const token = userData?.token || userData?.data?.token || userData?.accessToken || userData?.access_token;
+    
+    if (!userData || userData.success === false || userData.error || !token) {
+      console.error("Invalid login data received:", userData);
+      toast({
+        title: "Login Error",
+        description: "Authentication failed. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setAppointmentUser(userData);
     setShowLoginModal(false);
     
@@ -1177,8 +1194,11 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                       </Button>
                     )}
 
-                    {/* Example for showing doctors (bookingStep 1) */}
-                    {msg.role === 'assistant' && msg.content === 'Please select a doctor:' && bookingStep === 1 && availableDoctors.length > 0 && (
+                    {/* Show doctors only in the message that asks to select a doctor */}
+                    {msg.role === 'assistant' && 
+                     bookingStep === 1 && 
+                     availableDoctors.length > 0 && 
+                     msg.content.includes('Please select a doctor') && (
                        <div className="mt-2 space-y-1">
                          {selectedDoctor 
                            ? (<div className="font-semibold text-primary">{selectedDoctor.name || (selectedDoctor.firstName ? selectedDoctor.firstName + ' ' + selectedDoctor.lastName : 'Unnamed Doctor')}</div>)
@@ -1199,8 +1219,11 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                        </div>
                     )}
 
-                    {/* Example for showing slots (bookingStep 2) */}
-                    {msg.role === 'assistant' && msg.content === 'Please select an available time slot:' && bookingStep === 2 && availableSlots.length > 0 && (
+                    {/* Show time slots only in the message that asks to select a time slot */}
+                    {msg.role === 'assistant' && 
+                     bookingStep === 2 && 
+                     availableSlots.length > 0 && 
+                     (msg.content.includes('Please select an available time slot') || msg.content.includes('select a time slot')) && (
                        <div className="mt-2 grid grid-cols-3 gap-1">
                          {selectedSlot 
                            ? (<div className="font-semibold text-primary col-span-3">{(selectedSlot.date || selectedSlot.appointmentDate) + ' @ ' + (selectedSlot.time || selectedSlot.startTime)}</div>)

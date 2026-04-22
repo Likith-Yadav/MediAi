@@ -11,6 +11,32 @@ console.log('API Key loaded:', apiKey);
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
+const DEFAULT_TIMEOUT_MS = 15000;
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs),
+    ),
+  ]);
+};
+
+const retry = async <T>(fn: () => Promise<T>, maxRetries = 1, delayMs = 500): Promise<T> => {
+  let lastError: unknown;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (i < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  throw lastError;
+};
+
 export interface Message {
   role: 'user' | 'assistant';
   id: string;
@@ -27,11 +53,15 @@ export interface Message {
 export const medicalChatService = {
   async sendMessage(message: string, language: string = 'en-US'): Promise<Message> {
     try {
-      console.log('Starting chat with message:', message);
+      console.log('Starting chat request');
 
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
-      }, { apiVersion: "v1beta" });
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-2.5-flash",
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 512,
+        },
+      }, { apiVersion: "v1" });
 
       let prompt = `You are an AI medical assistant. Your role is to:
 1. Ask relevant questions about symptoms
@@ -44,19 +74,13 @@ User message: ${message}
 
 Please respond in a professional, caring manner.`;
 
-      if (language && language !== 'en-US') {
-        prompt += ` Provide your response first in English, followed by a translation into the selected language: ${language}. Use the format: "English: [English text] | Translated: [Translated text]".`;
-      } else {
-        prompt += ` Please respond in English.`;
-      }
-      
-      console.log('Sending message to Gemini...');
-      const result = await model.generateContent(prompt);
-      console.log('Received response from Gemini:', result);
+      const result = await retry(
+        () => withTimeout(model.generateContent(prompt), DEFAULT_TIMEOUT_MS),
+        1,
+      );
       
       const response = await result.response;
       const text = response.text();
-      console.log('Response text:', text);
 
       if (!text) {
         throw new Error('Empty response from AI');
@@ -72,11 +96,66 @@ Please respond in a professional, caring manner.`;
       console.error('Detailed chat error:', {
         error: error.name,
         message: error.message,
-        stack: error.stack,
       });
       throw new Error(`Failed to get AI response: ${error.message}`);
     }
-  }
+  },
+
+  async streamMessage(
+    message: string,
+    onChunk: (partialText: string) => void,
+  ): Promise<Message> {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 512,
+        },
+      }, { apiVersion: "v1" });
+
+      const prompt = `You are an AI medical assistant. Your role is to:
+1. Ask relevant questions about symptoms
+2. Provide preliminary analysis
+3. Recommend appropriate medications and treatments
+4. Give recovery procedures and lifestyle advice
+5. Always remind users to seek professional medical help for serious conditions
+
+User message: ${message}
+
+Please respond in a professional, caring manner.`;
+
+      const streamResult = await retry(
+        () => withTimeout(model.generateContentStream(prompt), DEFAULT_TIMEOUT_MS),
+        1,
+      );
+
+      let fullText = "";
+      for await (const chunk of streamResult.stream) {
+        const text = chunk.text();
+        if (!text) continue;
+        fullText += text;
+        onChunk(fullText);
+      }
+
+      if (!fullText.trim()) {
+        throw new Error('Empty response from AI');
+      }
+
+      return {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: fullText.trim(),
+        timestamp: new Date(),
+      };
+    } catch (error: any) {
+      console.error('Streaming chat error:', {
+        error: error.name,
+        message: error.message,
+      });
+      throw new Error(`Failed to stream AI response: ${error.message}`);
+    }
+  },
 };
 
 export const medicalAnalysisService = {
@@ -128,8 +207,8 @@ Important Notes:
 Please be thorough and precise while explaining in patient-friendly terms.`;
 
       const visionModel = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash",
-      }, { apiVersion: "v1beta" });
+        model: "gemini-2.5-flash",
+      }, { apiVersion: "v1" });
       
       const result = await visionModel.generateContent([prompt, imageData]);
       const response = await result.response;
