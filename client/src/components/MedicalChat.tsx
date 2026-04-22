@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -418,21 +420,16 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
               : msg
           )
         );
-      });
+      }, selectedLanguage);
       
+      const englishContent = response.content;
+      let translatedContent = response.content;
+
       // Clean and format the response
-      const cleanContent = response.content
-        .replace(/\*\*/g, '') // Remove bold markers
-        .replace(/\d+\. /g, '') // Remove numbered lists
-        .replace(/\n\n/g, '\n') // Reduce multiple newlines
-        .trim();
+      const cleanContent = response.content.trim();
       
       if (translatedContent) {
-        translatedContent = translatedContent
-          .replace(/\*\*/g, '')
-          .replace(/\d+\. /g, '')
-          .replace(/\n\n/g, '\n')
-          .trim();
+        translatedContent = translatedContent.trim();
       }
 
       // Check if AI suggests booking (using English content for keyword detection)
@@ -1156,13 +1153,15 @@ export default function MedicalChat({ selectedConsultation }: MedicalChatProps) 
                         />
                       </div>
                     )}
-                    {msg.role === 'user' && msg.image ? (
-                      <p className="text-sm whitespace-pre-wrap">
-                        {msg.imagePrompt || 'Please analyze this medical image.'}
-                      </p>
-                    ) : (
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    )}
+                    <div className="text-sm prose prose-slate max-w-none dark:prose-invert">
+                      {msg.role === 'assistant' ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.content}
+                        </ReactMarkdown>
+                      ) : (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      )}
+                    </div>
 
                     {/* Language Toggle Button */}
                     {msg.role === 'assistant' && msg.englishContent && msg.translatedContent && selectedLanguage !== 'en-US' && ( 

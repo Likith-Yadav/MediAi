@@ -1,17 +1,12 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
 // Verify API key
-const apiKey = "AIzaSyBbZxOPOPGnQ3JUF-EuTwhNvBCMqacLGBE";
-// if (!apiKey) {
-//   console.error('Gemini API key is not set in environment variables');
-//   throw new Error('Gemini API key is required');
-// }
+const apiKey = import.meta.env.VITE_POLLINATIONS_API_KEY;
+if (!apiKey) {
+  console.error('Pollinations API key is not set in environment variables');
+  throw new Error('Pollinations API key is required');
+}
 
-console.log('API Key loaded:', apiKey);
-
-const genAI = new GoogleGenerativeAI(apiKey);
-
-const DEFAULT_TIMEOUT_MS = 15000;
+const BASE_URL = 'https://gen.pollinations.ai/v1';
+const DEFAULT_TIMEOUT_MS = 30000;
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> => {
   return Promise.race([
@@ -53,34 +48,47 @@ export interface Message {
 export const medicalChatService = {
   async sendMessage(message: string, language: string = 'en-US'): Promise<Message> {
     try {
-      console.log('Starting chat request');
+      console.log('Starting chat request to Pollinations');
 
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 512,
-        },
-      }, { apiVersion: "v1" });
-
-      let prompt = `You are an AI medical assistant. Your role is to:
+      const response = await retry(
+        () => withTimeout(
+          fetch(`${BASE_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'openai',
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are an AI medical assistant. Your role is to:
 1. Ask relevant questions about symptoms
 2. Provide preliminary analysis
 3. Recommend appropriate medications and treatments
 4. Give recovery procedures and lifestyle advice
 5. Always remind users to seek professional medical help for serious conditions
-
-User message: ${message}
-
-Please respond in a professional, caring manner.`;
-
-      const result = await retry(
-        () => withTimeout(model.generateContent(prompt), DEFAULT_TIMEOUT_MS),
-        1,
+Respond in a professional, caring manner in the following language: ${language}.`,
+                },
+                { role: 'user', content: message },
+              ],
+              temperature: 0.4,
+              max_tokens: 512,
+            }),
+          }),
+          DEFAULT_TIMEOUT_MS
+        ),
+        1
       );
-      
-      const response = await result.response;
-      const text = response.text();
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const text = data.choices[0]?.message?.content;
 
       if (!text) {
         throw new Error('Empty response from AI');
@@ -93,10 +101,7 @@ Please respond in a professional, caring manner.`;
         timestamp: new Date(),
       };
     } catch (error: any) {
-      console.error('Detailed chat error:', {
-        error: error.name,
-        message: error.message,
-      });
+      console.error('Detailed chat error:', error);
       throw new Error(`Failed to get AI response: ${error.message}`);
     }
   },
@@ -104,38 +109,77 @@ Please respond in a professional, caring manner.`;
   async streamMessage(
     message: string,
     onChunk: (partialText: string) => void,
+    language: string = 'en-US'
   ): Promise<Message> {
     try {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 512,
-        },
-      }, { apiVersion: "v1" });
+      console.log('Starting streaming chat request to Pollinations');
 
-      const prompt = `You are an AI medical assistant. Your role is to:
+      const response = await retry(
+        () => withTimeout(
+          fetch(`${BASE_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'openai',
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are an AI medical assistant. Your role is to:
 1. Ask relevant questions about symptoms
 2. Provide preliminary analysis
 3. Recommend appropriate medications and treatments
 4. Give recovery procedures and lifestyle advice
 5. Always remind users to seek professional medical help for serious conditions
-
-User message: ${message}
-
-Please respond in a professional, caring manner.`;
-
-      const streamResult = await retry(
-        () => withTimeout(model.generateContentStream(prompt), DEFAULT_TIMEOUT_MS),
-        1,
+Respond in a professional, caring manner in the following language: ${language}.`,
+                },
+                { role: 'user', content: message },
+              ],
+              temperature: 0.4,
+              max_tokens: 512,
+              stream: true,
+            }),
+          }),
+          DEFAULT_TIMEOUT_MS
+        ),
+        1
       );
 
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('ReadableStream not supported');
+
+      const decoder = new TextDecoder();
       let fullText = "";
-      for await (const chunk of streamResult.stream) {
-        const text = chunk.text();
-        if (!text) continue;
-        fullText += text;
-        onChunk(fullText);
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith('data: ')) {
+            if (trimmedLine === 'data: [DONE]') continue;
+            try {
+              const data = JSON.parse(trimmedLine.slice(6));
+              const content = data.choices[0]?.delta?.content || "";
+              fullText += content;
+              if (content) onChunk(fullText);
+            } catch (e) {
+              console.warn('Error parsing stream chunk', e);
+            }
+          }
+        }
       }
 
       if (!fullText.trim()) {
@@ -149,10 +193,7 @@ Please respond in a professional, caring manner.`;
         timestamp: new Date(),
       };
     } catch (error: any) {
-      console.error('Streaming chat error:', {
-        error: error.name,
-        message: error.message,
-      });
+      console.error('Streaming chat error:', error);
       throw new Error(`Failed to stream AI response: ${error.message}`);
     }
   },
@@ -161,63 +202,68 @@ Please respond in a professional, caring manner.`;
 export const medicalAnalysisService = {
   async analyzeImage(file: File, userPrompt: string): Promise<string> {
     try {
-      console.log('Starting image analysis with prompt:', userPrompt);
-      
-      const data = await new Promise<string>((resolve) => {
+      console.log('Starting image analysis with Pollinations');
+
+      const dataUrl = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(file);
       });
-  
-      const imageData = {
-        inlineData: {
-          data: data.split(',')[1],
-          mimeType: file.type,
+
+      const response = await fetch(`${BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
         },
-      };
-  
-      const prompt = `You are a medical professional analyzing this medical image. The patient asks: "${userPrompt}"
+        body: JSON.stringify({
+          model: 'openai', 
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: `You are a medical professional. Analyze this image and patient query: "${userPrompt}"
 
-Please provide a comprehensive analysis in the following format:
+Provide a concise response using this structure:
 
-Image Type: [Specify the exact type of medical image - X-ray, MRI, CT scan, etc.]
+What has happened: **[One sentence bold summary of main findings]**
 
-Anatomical Region: [Specify the body part or organ system being examined]
-
-Key Findings:
-1. [List primary observations with specific details]
-2. [Note any abnormalities, masses, or concerning features]
-3. [Describe tissue characteristics, density variations, or structural changes]
+Key Observations:
+- [Finding 1]
+- [Finding 2]
 
 Clinical Interpretation:
-- [Provide detailed explanation of findings]
-- [Discuss potential medical implications]
-- [Compare with normal expectations]
+- [Short explanation]
 
 Recommendations:
-1. [Specific medical follow-up needed]
-2. [Additional tests if required]
-3. [Lifestyle or preventive measures]
+- [Next step 1]
+- [Next step 2]
 
-Important Notes:
-- [Critical information for patient awareness]
-- [Limitations of the analysis]
-- [Reminder about professional medical consultation]
+**Important:** This is not a diagnosis. Seek professional medical consultation.` },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: dataUrl,
+                  },
+                },
+              ],
+            },
+          ],
+          max_tokens: 500,
+        }),
+      });
 
-Please be thorough and precise while explaining in patient-friendly terms.`;
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
 
-      const visionModel = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
-      }, { apiVersion: "v1" });
-      
-      const result = await visionModel.generateContent([prompt, imageData]);
-      const response = await result.response;
-      const text = response.text();
-  
+      const data = await response.json();
+      const text = data.choices[0]?.message?.content;
+
       if (!text) {
         throw new Error('Empty response from AI');
       }
-  
+
       return text.trim();
     } catch (error: any) {
       console.error('Image analysis error:', error);
